@@ -835,6 +835,15 @@ body::before {
   display: none;
 }
 
+.upload-processing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-sm);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
 .upload-area:hover {
   border-color: var(--accent-blue);
   background: var(--bg-card-hover);

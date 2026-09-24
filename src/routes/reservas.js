@@ -13,7 +13,10 @@ const { todayStr, currentHour, maxDateStr } = require('../utils/datetime');
 // así que el archivo se sube directo a Supabase Storage.
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
+  // Vercel limita el body de una función serverless a ~4.5MB; el cliente
+  // ya comprime la imagen antes de subirla, esto es solo defensa en
+  // profundidad por si alguien llama al endpoint directamente.
+  limits: { fileSize: 4 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowedTypes = /jpeg|jpg|png|gif|webp|heic/;
     const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());

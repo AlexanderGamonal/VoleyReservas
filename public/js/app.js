@@ -367,30 +367,103 @@ function triggerFileInput(source) {
   document.getElementById(inputId).click();
 }
 
-function previewFile(event) {
+// Vercel limita el tamaño del body de una función serverless a ~4.5MB;
+// una foto de cámara sin comprimir (5-15MB) supera eso y el POST falla
+// con un error de red genérico ("Failed to fetch") antes de llegar al
+// backend. Por eso comprimimos la imagen en el navegador antes de subirla.
+const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
+const MAX_RAW_BYTES = 30 * 1024 * 1024;
+
+async function previewFile(event) {
   const file = event.target.files[0];
+  const uploadArea = document.getElementById('uploadArea');
 
   if (!file) return;
 
-  // Validate file size (10MB)
-  if (file.size > 10 * 1024 * 1024) {
-    showToast('El archivo es demasiado grande. Máximo 10MB.', 'error');
+  if (file.size > MAX_RAW_BYTES) {
+    showToast('El archivo es demasiado grande. Máximo 30MB.', 'error');
     event.target.value = '';
     return;
   }
 
-  state.selectedFile = file;
+  uploadArea.classList.add('has-file');
+  uploadArea.innerHTML = `
+    <div class="upload-processing">
+      <div class="spinner"></div>
+      <span>Procesando foto...</span>
+    </div>
+  `;
 
-  const uploadArea = document.getElementById('uploadArea');
+  let finalFile = file;
+  try {
+    finalFile = await compressImage(file);
+  } catch (error) {
+    console.error('Error comprimiendo imagen:', error);
+    finalFile = file;
+  }
+
+  if (finalFile.size > MAX_UPLOAD_BYTES) {
+    showToast('La foto sigue siendo muy pesada. Prueba con otra o recórtala.', 'error');
+    removeFile({ stopPropagation: () => {} });
+    return;
+  }
+
+  state.selectedFile = finalFile;
+
   const reader = new FileReader();
   reader.onload = (e) => {
-    uploadArea.classList.add('has-file');
     uploadArea.innerHTML = `
       <img src="${e.target.result}" class="upload-preview" alt="Comprobante">
       <button type="button" class="remove-file" onclick="removeFile(event)">✕</button>
     `;
   };
-  reader.readAsDataURL(file);
+  reader.readAsDataURL(finalFile);
+}
+
+/**
+ * Reduce dimensiones/peso de una foto usando canvas antes de subirla.
+ * Si el navegador no soporta createImageBitmap o falla (p.ej. HEIC en
+ * algunos Chrome), se devuelve el archivo original sin tocar.
+ */
+function compressImage(file, maxDimension = 1600, quality = 0.75) {
+  return new Promise((resolve) => {
+    if (!file.type.startsWith('image/') || typeof createImageBitmap !== 'function') {
+      resolve(file);
+      return;
+    }
+
+    createImageBitmap(file)
+      .then((bitmap) => {
+        const { width, height } = bitmap;
+
+        if (width <= maxDimension && height <= maxDimension && file.size <= MAX_UPLOAD_BYTES) {
+          bitmap.close?.();
+          resolve(file);
+          return;
+        }
+
+        const scale = Math.min(1, maxDimension / Math.max(width, height));
+        const targetW = Math.round(width * scale);
+        const targetH = Math.round(height * scale);
+
+        const canvas = document.createElement('canvas');
+        canvas.width = targetW;
+        canvas.height = targetH;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(bitmap, 0, 0, targetW, targetH);
+        bitmap.close?.();
+
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            resolve(file);
+            return;
+          }
+          const jpgName = file.name.replace(/\.[^.]+$/, '') + '.jpg';
+          resolve(new File([blob], jpgName, { type: 'image/jpeg' }));
+        }, 'image/jpeg', quality);
+      })
+      .catch(() => resolve(file));
+  });
 }
 
 function removeFile(event) {
@@ -450,10 +523,14 @@ async function submitBooking(event) {
   submitBtn.disabled = true;
   submitBtn.innerHTML = '<div class="spinner"></div><span>Enviando...</span>';
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 25000);
+
   try {
     const response = await fetch(`${API_BASE}/api/reservas`, {
       method: 'POST',
-      body: formData
+      body: formData,
+      signal: controller.signal
     });
 
     const data = await response.json();
@@ -470,8 +547,15 @@ async function submitBooking(event) {
 
   } catch (error) {
     console.error('Error:', error);
-    showToast(error.message, 'error');
+    let message = error.message;
+    if (error.name === 'AbortError') {
+      message = 'La conexión tardó demasiado. Verifica tu internet e intenta de nuevo.';
+    } else if (message === 'Failed to fetch') {
+      message = 'No se pudo conectar con el servidor. Verifica tu internet e intenta de nuevo.';
+    }
+    showToast(message, 'error');
   } finally {
+    clearTimeout(timeoutId);
     submitBtn.disabled = false;
     submitBtn.innerHTML = '<span>Enviar Reserva</span><span>✉️</span>';
   }
