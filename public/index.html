@@ -131,16 +131,26 @@
         <div class="form-group">
           <label class="form-label">Comprobante de pago</label>
           <div class="upload-area" id="uploadArea">
-            <span class="upload-icon">📸</span>
-            <span class="upload-text">Sube o toma una foto del comprobante</span>
-            <span class="upload-hint">JPG, PNG o captura de pantalla</span>
-            <div class="upload-buttons">
-              <button type="button" class="btn-upload-option" onclick="triggerFileInput('camera')">
-                <span>📷</span><span>Tomar foto</span>
-              </button>
-              <button type="button" class="btn-upload-option" onclick="triggerFileInput('gallery')">
-                <span>🖼️</span><span>Elegir de galería</span>
-              </button>
+            <div class="upload-empty" id="uploadEmpty">
+              <span class="upload-icon">📸</span>
+              <span class="upload-text">Sube o toma una foto del comprobante</span>
+              <span class="upload-hint">JPG, PNG o captura de pantalla</span>
+              <div class="upload-buttons">
+                <button type="button" class="btn-upload-option" onclick="triggerFileInput('camera')">
+                  <span>📷</span><span>Tomar foto</span>
+                </button>
+                <button type="button" class="btn-upload-option" onclick="triggerFileInput('gallery')">
+                  <span>🖼️</span><span>Elegir de galería</span>
+                </button>
+              </div>
+            </div>
+            <div class="upload-processing" id="uploadProcessing" style="display: none;">
+              <div class="spinner"></div>
+              <span>Procesando foto...</span>
+            </div>
+            <div class="upload-preview-wrap" id="uploadPreviewWrap" style="display: none;">
+              <img id="uploadPreviewImg" class="upload-preview" alt="Comprobante" src="">
+              <button type="button" class="remove-file" onclick="removeFile(event)">✕</button>
             </div>
             <input type="file" id="inputFileCamera" class="upload-input-hidden" accept="image/*" capture="environment" onchange="previewFile(event)">
             <input type="file" id="inputFileGallery" class="upload-input-hidden" accept="image/*" onchange="previewFile(event)">
