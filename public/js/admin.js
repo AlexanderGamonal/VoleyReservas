@@ -481,13 +481,15 @@ async function confirmReservation(id) {
 
     showToast('✅ Reserva confirmada', 'success');
 
+    // Al confirmar, la reserva deja de aparecer en la pestaña "Pendientes"
+    // en el siguiente refresco, así que un botón dentro de la tarjeta
+    // desaparecería antes de que el admin llegue a hacer clic. Se redirige
+    // el propio tab a wa.me: a diferencia de window.open(), una navegación
+    // nunca la bloquea el navegador como popup.
     if (data.whatsapp_url) {
       state.whatsappLinks[id] = data.whatsapp_url;
-      // Al confirmar, la reserva deja de aparecer en la pestaña "Pendientes"
-      // en el siguiente refresco, así que el botón de WhatsApp en la tarjeta
-      // desaparecería antes de que el admin llegue a hacer clic. Por eso se
-      // abre automáticamente en vez de depender de ese botón.
-      window.open(data.whatsapp_url, '_blank', 'noopener');
+      redirectToWhatsapp(data.whatsapp_url);
+      return;
     }
 
     // Reload data
@@ -496,6 +498,10 @@ async function confirmReservation(id) {
   } catch (error) {
     showToast(error.message, 'error');
   }
+}
+
+function redirectToWhatsapp(url) {
+  window.location.href = url;
 }
 
 async function rejectReservation(id) {
@@ -515,7 +521,8 @@ async function rejectReservation(id) {
 
     if (data.whatsapp_url) {
       state.whatsappLinks[id] = data.whatsapp_url;
-      window.open(data.whatsapp_url, '_blank', 'noopener');
+      redirectToWhatsapp(data.whatsapp_url);
+      return;
     }
 
     loadDashboard();
