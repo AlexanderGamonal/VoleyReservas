@@ -1,4 +1,4 @@
-const { db } = require('../database');
+const { supabase } = require('../database');
 
 const EXPIRATION_MINUTES = 10;
 
@@ -6,26 +6,31 @@ const EXPIRATION_MINUTES = 10;
  * Check for expired pending reservations and mark them as expired.
  * This frees up the time slots for other customers.
  */
-function expireOldReservations() {
-  const stmt = db.prepare(`
-    UPDATE reservas 
-    SET estado = 'expirada' 
-    WHERE estado = 'pendiente' 
-    AND datetime(created_at, '+${EXPIRATION_MINUTES} minutes') <= datetime('now', 'localtime')
-  `);
+async function expireOldReservations() {
+  const cutoff = new Date(Date.now() - EXPIRATION_MINUTES * 60 * 1000).toISOString();
 
-  const result = stmt.run();
+  const { data, error } = await supabase
+    .from('voley_reservas')
+    .update({ estado: 'expirada' })
+    .eq('estado', 'pendiente')
+    .lte('created_at', cutoff)
+    .select('id');
 
-  if (result.changes > 0) {
-    console.log(`⏱️  ${result.changes} reserva(s) expirada(s) automáticamente`);
+  if (error) {
+    console.error('Error expirando reservas:', error);
+    return 0;
   }
 
-  return result.changes;
+  if (data.length > 0) {
+    console.log(`⏱️  ${data.length} reserva(s) expirada(s) automáticamente`);
+  }
+
+  return data.length;
 }
 
 /**
  * Get the remaining time in seconds for a pending reservation
- * @param {object} reserva - Reservation object with created_at
+ * @param {string} createdAt - Reservation created_at timestamp
  * @returns {number} Seconds remaining, or 0 if expired
  */
 function getTimeRemaining(createdAt) {

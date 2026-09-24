@@ -1,31 +1,17 @@
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
 const router = express.Router();
-const { db } = require('../database');
+const { supabase, COMPROBANTES_BUCKET } = require('../database');
 const { authenticateToken } = require('../middleware/auth');
 const { calcularPrecioTotal, getInfoPrecios, precioHora } = require('../utils/pricing');
 const { notifyNewReservation } = require('../utils/notifications');
-const { getTimeRemaining, EXPIRATION_MINUTES } = require('../utils/expiration');
+const { getTimeRemaining, expireOldReservations, EXPIRATION_MINUTES } = require('../utils/expiration');
 
-// Configure multer for file uploads
-const UPLOADS_DIR = path.join(__dirname, '..', '..', 'uploads');
-if (!fs.existsSync(UPLOADS_DIR)) {
-  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-}
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOADS_DIR),
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const ext = path.extname(file.originalname);
-    cb(null, `comprobante-${uniqueSuffix}${ext}`);
-  }
-});
-
+// Multer guarda en memoria: el filesystem de Vercel es de solo lectura,
+// así que el archivo se sube directo a Supabase Storage.
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
   fileFilter: (req, file, cb) => {
     const allowedTypes = /jpeg|jpg|png|gif|webp|heic/;
@@ -65,7 +51,7 @@ router.get('/precios', (req, res) => {
  * GET /api/disponibilidad/:fecha
  * Get available hours for a specific date
  */
-router.get('/disponibilidad/:fecha', (req, res) => {
+router.get('/disponibilidad/:fecha', async (req, res) => {
   try {
     const { fecha } = req.params;
 
@@ -88,12 +74,17 @@ router.get('/disponibilidad/:fecha', (req, res) => {
       return res.status(400).json({ error: 'Solo se pueden ver hasta 14 días en adelante' });
     }
 
+    // No hay proceso cron persistente en serverless: expiramos al vuelo.
+    await expireOldReservations();
+
     // Get occupied hours (confirmed + pending reservations)
-    const reservas = db.prepare(`
-      SELECT hora_inicio, hora_fin, estado
-      FROM reservas 
-      WHERE fecha = ? AND estado IN ('confirmada', 'pendiente')
-    `).all(fecha);
+    const { data: reservas, error } = await supabase
+      .from('voley_reservas')
+      .select('hora_inicio, hora_fin, estado')
+      .eq('fecha', fecha)
+      .in('estado', ['confirmada', 'pendiente']);
+
+    if (error) throw error;
 
     // Build availability grid
     const info = getInfoPrecios();
@@ -175,44 +166,60 @@ router.post('/reservas', upload.single('comprobante'), async (req, res) => {
       return res.status(400).json({ error: 'Fecha fuera del rango permitido' });
     }
 
+    await expireOldReservations();
+
     // Check availability (no confirmed or pending reservations in the requested time)
-    const conflicts = db.prepare(`
-      SELECT id FROM reservas 
-      WHERE fecha = ? 
-      AND estado IN ('confirmada', 'pendiente')
-      AND hora_inicio < ? 
-      AND hora_fin > ?
-    `).all(fecha, horaFin, horaInicio);
+    const { data: conflicts, error: conflictError } = await supabase
+      .from('voley_reservas')
+      .select('id')
+      .eq('fecha', fecha)
+      .in('estado', ['confirmada', 'pendiente'])
+      .lt('hora_inicio', horaFin)
+      .gt('hora_fin', horaInicio);
+
+    if (conflictError) throw conflictError;
 
     if (conflicts.length > 0) {
-      // Clean up uploaded file
-      if (req.file) fs.unlinkSync(req.file.path);
       return res.status(409).json({ error: 'El horario seleccionado ya no está disponible' });
     }
 
     // Calculate total price
     const montoTotal = calcularPrecioTotal(horaInicio, horaFin);
 
+    // Upload receipt image to Supabase Storage
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    const ext = path.extname(req.file.originalname);
+    const objectPath = `comprobante-${uniqueSuffix}${ext}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from(COMPROBANTES_BUCKET)
+      .upload(objectPath, req.file.buffer, { contentType: req.file.mimetype });
+
+    if (uploadError) throw uploadError;
+
     // Create reservation
-    const stmt = db.prepare(`
-      INSERT INTO reservas (fecha, hora_inicio, hora_fin, nombre_cliente, telefono, metodo_pago, comprobante_path, monto_total)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+    const { data: inserted, error: insertError } = await supabase
+      .from('voley_reservas')
+      .insert({
+        fecha,
+        hora_inicio: horaInicio,
+        hora_fin: horaFin,
+        nombre_cliente,
+        telefono,
+        metodo_pago,
+        comprobante_path: objectPath,
+        monto_total: montoTotal,
+        estado: 'pendiente'
+      })
+      .select()
+      .single();
 
-    const result = stmt.run(fecha, horaInicio, horaFin, nombre_cliente, telefono, metodo_pago, req.file.filename, montoTotal);
+    if (insertError) {
+      await supabase.storage.from(COMPROBANTES_BUCKET).remove([objectPath]);
+      throw insertError;
+    }
 
-    const reserva = {
-      id: result.lastInsertRowid,
-      fecha,
-      hora_inicio: horaInicio,
-      hora_fin: horaFin,
-      nombre_cliente,
-      telefono,
-      metodo_pago,
-      monto_total: montoTotal,
-      estado: 'pendiente',
-      expiration_minutes: EXPIRATION_MINUTES
-    };
+    const reserva = { ...inserted, expiration_minutes: EXPIRATION_MINUTES };
 
     // Send push notification to admin (non-blocking)
     notifyNewReservation(reserva).catch(err => {
@@ -225,9 +232,6 @@ router.post('/reservas', upload.single('comprobante'), async (req, res) => {
     });
   } catch (error) {
     console.error('Error creando reserva:', error);
-    if (req.file) {
-      try { fs.unlinkSync(req.file.path); } catch (e) { /* ignore */ }
-    }
     res.status(500).json({ error: 'Error interno del servidor' });
   }
 });
@@ -236,13 +240,19 @@ router.post('/reservas', upload.single('comprobante'), async (req, res) => {
  * GET /api/reservas/:id/estado
  * Check reservation status
  */
-router.get('/reservas/:id/estado', (req, res) => {
+router.get('/reservas/:id/estado', async (req, res) => {
   try {
     const { id } = req.params;
-    const reserva = db.prepare(`
-      SELECT id, fecha, hora_inicio, hora_fin, nombre_cliente, monto_total, estado, created_at, confirmed_at
-      FROM reservas WHERE id = ?
-    `).get(id);
+
+    await expireOldReservations();
+
+    const { data: reserva, error } = await supabase
+      .from('voley_reservas')
+      .select('id, fecha, hora_inicio, hora_fin, nombre_cliente, monto_total, estado, created_at, confirmed_at')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error) throw error;
 
     if (!reserva) {
       return res.status(404).json({ error: 'Reserva no encontrada' });
@@ -268,27 +278,25 @@ router.get('/reservas/:id/estado', (req, res) => {
  * GET /api/admin/reservas
  * List reservations with filters
  */
-router.get('/admin/reservas', authenticateToken, (req, res) => {
+router.get('/admin/reservas', authenticateToken, async (req, res) => {
   try {
     const { fecha, estado, limit = 50, offset = 0 } = req.query;
 
-    let query = 'SELECT * FROM reservas WHERE 1=1';
-    const params = [];
+    await expireOldReservations();
 
-    if (fecha) {
-      query += ' AND fecha = ?';
-      params.push(fecha);
-    }
+    let query = supabase.from('voley_reservas').select('*');
 
-    if (estado) {
-      query += ' AND estado = ?';
-      params.push(estado);
-    }
+    if (fecha) query = query.eq('fecha', fecha);
+    if (estado) query = query.eq('estado', estado);
 
-    query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
-    params.push(parseInt(limit), parseInt(offset));
+    const from = parseInt(offset);
+    const to = from + parseInt(limit) - 1;
 
-    const reservas = db.prepare(query).all(...params);
+    const { data: reservas, error } = await query
+      .order('created_at', { ascending: false })
+      .range(from, to);
+
+    if (error) throw error;
 
     // Add time remaining for pending reservations
     const enriched = reservas.map(r => ({
@@ -307,10 +315,13 @@ router.get('/admin/reservas', authenticateToken, (req, res) => {
  * PUT /api/admin/reservas/:id/confirmar
  * Confirm a pending reservation
  */
-router.put('/admin/reservas/:id/confirmar', authenticateToken, (req, res) => {
+router.put('/admin/reservas/:id/confirmar', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const reserva = db.prepare('SELECT * FROM reservas WHERE id = ?').get(id);
+    const { data: reserva, error: fetchError } = await supabase
+      .from('voley_reservas').select('*').eq('id', id).maybeSingle();
+
+    if (fetchError) throw fetchError;
 
     if (!reserva) {
       return res.status(404).json({ error: 'Reserva no encontrada' });
@@ -320,11 +331,14 @@ router.put('/admin/reservas/:id/confirmar', authenticateToken, (req, res) => {
       return res.status(400).json({ error: `No se puede confirmar una reserva con estado "${reserva.estado}"` });
     }
 
-    db.prepare(`
-      UPDATE reservas SET estado = 'confirmada', confirmed_at = datetime('now', 'localtime') WHERE id = ?
-    `).run(id);
+    const { data: updated, error: updateError } = await supabase
+      .from('voley_reservas')
+      .update({ estado: 'confirmada', confirmed_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single();
 
-    const updated = db.prepare('SELECT * FROM reservas WHERE id = ?').get(id);
+    if (updateError) throw updateError;
 
     // Generate WhatsApp message
     const horaInicioStr = `${updated.hora_inicio}:00`;
@@ -349,10 +363,13 @@ router.put('/admin/reservas/:id/confirmar', authenticateToken, (req, res) => {
  * PUT /api/admin/reservas/:id/rechazar
  * Reject a pending reservation
  */
-router.put('/admin/reservas/:id/rechazar', authenticateToken, (req, res) => {
+router.put('/admin/reservas/:id/rechazar', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const reserva = db.prepare('SELECT * FROM reservas WHERE id = ?').get(id);
+    const { data: reserva, error: fetchError } = await supabase
+      .from('voley_reservas').select('*').eq('id', id).maybeSingle();
+
+    if (fetchError) throw fetchError;
 
     if (!reserva) {
       return res.status(404).json({ error: 'Reserva no encontrada' });
@@ -362,9 +379,14 @@ router.put('/admin/reservas/:id/rechazar', authenticateToken, (req, res) => {
       return res.status(400).json({ error: `No se puede rechazar una reserva con estado "${reserva.estado}"` });
     }
 
-    db.prepare("UPDATE reservas SET estado = 'rechazada' WHERE id = ?").run(id);
+    const { data: updated, error: updateError } = await supabase
+      .from('voley_reservas')
+      .update({ estado: 'rechazada' })
+      .eq('id', id)
+      .select()
+      .single();
 
-    const updated = db.prepare('SELECT * FROM reservas WHERE id = ?').get(id);
+    if (updateError) throw updateError;
 
     // Generate WhatsApp message
     const horaInicioStr = `${updated.hora_inicio}:00`;
@@ -389,10 +411,13 @@ router.put('/admin/reservas/:id/rechazar', authenticateToken, (req, res) => {
  * PUT /api/admin/reservas/:id/cancelar
  * Cancel a confirmed reservation
  */
-router.put('/admin/reservas/:id/cancelar', authenticateToken, (req, res) => {
+router.put('/admin/reservas/:id/cancelar', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const reserva = db.prepare('SELECT * FROM reservas WHERE id = ?').get(id);
+    const { data: reserva, error: fetchError } = await supabase
+      .from('voley_reservas').select('*').eq('id', id).maybeSingle();
+
+    if (fetchError) throw fetchError;
 
     if (!reserva) {
       return res.status(404).json({ error: 'Reserva no encontrada' });
@@ -402,9 +427,14 @@ router.put('/admin/reservas/:id/cancelar', authenticateToken, (req, res) => {
       return res.status(400).json({ error: `Solo se pueden cancelar reservas confirmadas` });
     }
 
-    db.prepare("UPDATE reservas SET estado = 'cancelada' WHERE id = ?").run(id);
+    const { data: updated, error: updateError } = await supabase
+      .from('voley_reservas')
+      .update({ estado: 'cancelada' })
+      .eq('id', id)
+      .select()
+      .single();
 
-    const updated = db.prepare('SELECT * FROM reservas WHERE id = ?').get(id);
+    if (updateError) throw updateError;
 
     res.json({
       message: 'Reserva cancelada',
@@ -420,21 +450,29 @@ router.put('/admin/reservas/:id/cancelar', authenticateToken, (req, res) => {
  * GET /api/admin/reservas/:id/comprobante
  * Get receipt image for a reservation
  */
-router.get('/admin/reservas/:id/comprobante', authenticateToken, (req, res) => {
+router.get('/admin/reservas/:id/comprobante', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const reserva = db.prepare('SELECT comprobante_path FROM reservas WHERE id = ?').get(id);
+    const { data: reserva, error } = await supabase
+      .from('voley_reservas').select('comprobante_path').eq('id', id).maybeSingle();
+
+    if (error) throw error;
 
     if (!reserva) {
       return res.status(404).json({ error: 'Reserva no encontrada' });
     }
 
-    const filePath = path.join(UPLOADS_DIR, reserva.comprobante_path);
-    if (!fs.existsSync(filePath)) {
+    const { data: file, error: downloadError } = await supabase.storage
+      .from(COMPROBANTES_BUCKET)
+      .download(reserva.comprobante_path);
+
+    if (downloadError || !file) {
       return res.status(404).json({ error: 'Comprobante no encontrado' });
     }
 
-    res.sendFile(filePath);
+    const buffer = Buffer.from(await file.arrayBuffer());
+    res.setHeader('Content-Type', file.type || 'application/octet-stream');
+    res.send(buffer);
   } catch (error) {
     console.error('Error obteniendo comprobante:', error);
     res.status(500).json({ error: 'Error interno del servidor' });
@@ -445,59 +483,52 @@ router.get('/admin/reservas/:id/comprobante', authenticateToken, (req, res) => {
  * GET /api/admin/ingresos
  * Get income summary
  */
-router.get('/admin/ingresos', authenticateToken, (req, res) => {
+router.get('/admin/ingresos', authenticateToken, async (req, res) => {
   try {
     const today = new Date().toLocaleDateString('en-CA');
 
-    // Daily income
-    const ingresoDiario = db.prepare(`
-      SELECT COALESCE(SUM(monto_total), 0) as total, COUNT(*) as cantidad
-      FROM reservas WHERE fecha = ? AND estado = 'confirmada'
-    `).get(today);
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const sevenDaysAgoStr = sevenDaysAgo.toLocaleDateString('en-CA');
 
-    // Weekly income (last 7 days)
-    const ingresoSemanal = db.prepare(`
-      SELECT COALESCE(SUM(monto_total), 0) as total, COUNT(*) as cantidad
-      FROM reservas 
-      WHERE fecha >= date('now', 'localtime', '-7 days') 
-      AND estado = 'confirmada'
-    `).get();
+    const now = new Date();
+    const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
 
-    // Monthly income (current month)
-    const ingresoMensual = db.prepare(`
-      SELECT COALESCE(SUM(monto_total), 0) as total, COUNT(*) as cantidad
-      FROM reservas 
-      WHERE strftime('%Y-%m', fecha) = strftime('%Y-%m', 'now', 'localtime')
-      AND estado = 'confirmada'
-    `).get();
+    const [
+      { data: diarioRows, error: e1 },
+      { data: semanalRows, error: e2 },
+      { data: mensualRows, error: e3 },
+      { count: pendientes, error: e4 },
+      { count: reservasHoy, error: e5 },
+      { data: desgloseRaw, error: e6 }
+    ] = await Promise.all([
+      supabase.from('voley_reservas').select('monto_total').eq('fecha', today).eq('estado', 'confirmada'),
+      supabase.from('voley_reservas').select('monto_total').gte('fecha', sevenDaysAgoStr).eq('estado', 'confirmada'),
+      supabase.from('voley_reservas').select('monto_total').gte('fecha', monthStart).eq('estado', 'confirmada'),
+      supabase.from('voley_reservas').select('id', { count: 'exact', head: true }).eq('estado', 'pendiente'),
+      supabase.from('voley_reservas').select('id', { count: 'exact', head: true }).eq('fecha', today).eq('estado', 'confirmada'),
+      supabase.from('voley_reservas').select('fecha, monto_total').gte('fecha', sevenDaysAgoStr).eq('estado', 'confirmada').order('fecha', { ascending: true })
+    ]);
 
-    // Daily breakdown for the last 7 days
-    const desgloseDiario = db.prepare(`
-      SELECT fecha, COALESCE(SUM(monto_total), 0) as total, COUNT(*) as cantidad
-      FROM reservas 
-      WHERE fecha >= date('now', 'localtime', '-7 days')
-      AND estado = 'confirmada'
-      GROUP BY fecha
-      ORDER BY fecha ASC
-    `).all();
+    const firstError = e1 || e2 || e3 || e4 || e5 || e6;
+    if (firstError) throw firstError;
 
-    // Pending reservations count
-    const pendientes = db.prepare(`
-      SELECT COUNT(*) as cantidad FROM reservas WHERE estado = 'pendiente'
-    `).get();
+    const sum = rows => rows.reduce((acc, r) => acc + Number(r.monto_total), 0);
 
-    // Today's confirmed reservations
-    const reservasHoy = db.prepare(`
-      SELECT COUNT(*) as cantidad FROM reservas WHERE fecha = ? AND estado = 'confirmada'
-    `).get(today);
+    const desgloseMap = {};
+    for (const r of desgloseRaw) {
+      if (!desgloseMap[r.fecha]) desgloseMap[r.fecha] = { fecha: r.fecha, total: 0, cantidad: 0 };
+      desgloseMap[r.fecha].total += Number(r.monto_total);
+      desgloseMap[r.fecha].cantidad += 1;
+    }
 
     res.json({
-      diario: ingresoDiario,
-      semanal: ingresoSemanal,
-      mensual: ingresoMensual,
-      desglose_diario: desgloseDiario,
-      pendientes: pendientes.cantidad,
-      reservas_hoy: reservasHoy.cantidad
+      diario: { total: sum(diarioRows), cantidad: diarioRows.length },
+      semanal: { total: sum(semanalRows), cantidad: semanalRows.length },
+      mensual: { total: sum(mensualRows), cantidad: mensualRows.length },
+      desglose_diario: Object.values(desgloseMap),
+      pendientes: pendientes || 0,
+      reservas_hoy: reservasHoy || 0
     });
   } catch (error) {
     console.error('Error obteniendo ingresos:', error);

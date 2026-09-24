@@ -1,7 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcrypt');
 const router = express.Router();
-const { db } = require('../database');
+const { supabase } = require('../database');
 const { authenticateToken, generateToken } = require('../middleware/auth');
 const { saveSubscription } = require('../utils/notifications');
 
@@ -17,7 +17,13 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ error: 'Usuario y contraseña requeridos' });
     }
 
-    const admin = db.prepare('SELECT * FROM admin WHERE username = ?').get(username);
+    const { data: admin, error } = await supabase
+      .from('voley_admin')
+      .select('*')
+      .eq('username', username)
+      .maybeSingle();
+
+    if (error) throw error;
 
     if (!admin) {
       return res.status(401).json({ error: 'Credenciales inválidas' });
@@ -48,7 +54,7 @@ router.post('/login', async (req, res) => {
  * POST /api/admin/push/subscribe
  * Save push notification subscription for admin
  */
-router.post('/push/subscribe', authenticateToken, (req, res) => {
+router.post('/push/subscribe', authenticateToken, async (req, res) => {
   try {
     const subscription = req.body;
 
@@ -56,7 +62,7 @@ router.post('/push/subscribe', authenticateToken, (req, res) => {
       return res.status(400).json({ error: 'Suscripción inválida' });
     }
 
-    saveSubscription(subscription);
+    await saveSubscription(subscription);
 
     res.json({ message: 'Suscripción guardada exitosamente' });
   } catch (error) {

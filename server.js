@@ -38,10 +38,15 @@ app.get('/api/vapid-public-key', (req, res) => {
   res.json({ publicKey: process.env.VAPID_PUBLIC_KEY || '' });
 });
 
-// Cron job: expire pending reservations every minute
-cron.schedule('* * * * *', () => {
-  expireOldReservations();
-});
+// Cron job: expire pending reservations every minute.
+// Solo tiene sentido en un proceso persistente (dev local); en Vercel
+// serverless no hay proceso de fondo, así que la expiración se hace
+// al vuelo en cada request relevante (ver src/routes/reservas.js).
+if (!process.env.VERCEL) {
+  cron.schedule('* * * * *', () => {
+    expireOldReservations().catch(err => console.error('Error expirando reservas:', err));
+  });
+}
 
 // Error handling middleware
 app.use((err, req, res, next) => {
