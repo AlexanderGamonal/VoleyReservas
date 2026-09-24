@@ -1,6 +1,6 @@
 /**
  * VoleyReservas - Setup Script
- * Run this once to initialize the database and generate VAPID keys
+ * Run this once to generate VAPID keys and create the admin account.
  * Usage: node setup.js
  */
 
@@ -25,18 +25,13 @@ if (!fs.existsSync(envPath)) {
 
 require('dotenv').config();
 
-const { db, initializeDatabase } = require('./src/database');
+const { supabase } = require('./src/database');
 
 async function setup() {
   console.log('\n🏐 VoleyReservas - Configuración Inicial\n');
   console.log('=========================================\n');
 
-  // 1. Initialize database
-  console.log('📦 Inicializando base de datos...');
-  initializeDatabase();
-  console.log('✅ Base de datos creada\n');
-
-  // 2. Generate VAPID keys
+  // 1. Generate VAPID keys
   console.log('🔑 Generando claves VAPID para notificaciones push...');
   const vapidKeys = webpush.generateVAPIDKeys();
 
@@ -52,26 +47,28 @@ async function setup() {
   fs.writeFileSync(envPath, envContent);
   console.log('✅ Claves VAPID generadas y guardadas en .env\n');
 
-  // 3. Create admin account
+  // 2. Create admin account
   const adminUser = process.env.ADMIN_USER || 'admin';
   const adminPass = process.env.ADMIN_PASS || 'admin123';
 
-  const existingAdmin = db.prepare('SELECT * FROM admin WHERE username = ?').get(adminUser);
+  const { data: existingAdmin, error: fetchError } = await supabase
+    .from('voley_admin')
+    .select('*')
+    .eq('username', adminUser)
+    .maybeSingle();
+
+  if (fetchError) throw fetchError;
 
   if (!existingAdmin) {
     console.log('👤 Creando cuenta de administrador...');
     const passwordHash = await bcrypt.hash(adminPass, 10);
-    db.prepare('INSERT INTO admin (username, password_hash) VALUES (?, ?)').run(adminUser, passwordHash);
+    const { error: insertError } = await supabase
+      .from('voley_admin')
+      .insert({ username: adminUser, password_hash: passwordHash });
+    if (insertError) throw insertError;
     console.log(`✅ Admin creado: usuario="${adminUser}", contraseña="${adminPass}"\n`);
   } else {
     console.log('ℹ️  La cuenta de admin ya existe\n');
-  }
-
-  // 4. Create uploads directory
-  const uploadsDir = path.join(__dirname, 'uploads');
-  if (!fs.existsSync(uploadsDir)) {
-    fs.mkdirSync(uploadsDir, { recursive: true });
-    console.log('📁 Carpeta de uploads creada\n');
   }
 
   console.log('=========================================');

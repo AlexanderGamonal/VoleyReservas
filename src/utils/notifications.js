@@ -1,5 +1,5 @@
 const webpush = require('web-push');
-const { db } = require('../database');
+const { supabase } = require('../database');
 
 /**
  * Initialize VAPID keys for Web Push notifications
@@ -21,9 +21,12 @@ function initializeWebPush() {
  * Save a push subscription for the admin
  * @param {object} subscription - Push subscription object from the browser
  */
-function saveSubscription(subscription) {
-  const stmt = db.prepare('INSERT INTO push_subscriptions (subscription) VALUES (?)');
-  stmt.run(JSON.stringify(subscription));
+async function saveSubscription(subscription) {
+  const { error } = await supabase
+    .from('voley_push_subscriptions')
+    .insert({ subscription });
+
+  if (error) throw error;
 }
 
 /**
@@ -32,7 +35,14 @@ function saveSubscription(subscription) {
  * @param {object} data - Notification data
  */
 async function sendPushNotification(title, data) {
-  const subscriptions = db.prepare('SELECT * FROM push_subscriptions').all();
+  const { data: subscriptions, error } = await supabase
+    .from('voley_push_subscriptions')
+    .select('*');
+
+  if (error) {
+    console.error('Error obteniendo suscripciones:', error);
+    return [];
+  }
 
   const payload = JSON.stringify({
     title,
@@ -47,13 +57,12 @@ async function sendPushNotification(title, data) {
   const results = [];
   for (const sub of subscriptions) {
     try {
-      const subscription = JSON.parse(sub.subscription);
-      await webpush.sendNotification(subscription, payload);
+      await webpush.sendNotification(sub.subscription, payload);
       results.push({ id: sub.id, success: true });
     } catch (error) {
       // If subscription is expired or invalid, remove it
       if (error.statusCode === 410 || error.statusCode === 404) {
-        db.prepare('DELETE FROM push_subscriptions WHERE id = ?').run(sub.id);
+        await supabase.from('voley_push_subscriptions').delete().eq('id', sub.id);
       }
       results.push({ id: sub.id, success: false, error: error.message });
     }
