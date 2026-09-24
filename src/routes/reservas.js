@@ -7,6 +7,7 @@ const { authenticateToken } = require('../middleware/auth');
 const { calcularPrecioTotal, getInfoPrecios, precioHora } = require('../utils/pricing');
 const { notifyNewReservation } = require('../utils/notifications');
 const { getTimeRemaining, expireOldReservations, EXPIRATION_MINUTES } = require('../utils/expiration');
+const { todayStr, currentHour, maxDateStr } = require('../utils/datetime');
 
 // Multer guarda en memoria: el filesystem de Vercel es de solo lectura,
 // así que el archivo se sube directo a Supabase Storage.
@@ -60,17 +61,14 @@ router.get('/disponibilidad/:fecha', async (req, res) => {
       return res.status(400).json({ error: 'Formato de fecha inválido. Use YYYY-MM-DD' });
     }
 
-    // Check date is within allowed range (today to +14 days)
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const requestedDate = new Date(fecha + 'T00:00:00');
-    const maxDate = new Date(today);
-    maxDate.setDate(maxDate.getDate() + 14);
+    // Check date is within allowed range (today to +14 days), en hora de Lima
+    const today = todayStr();
+    const maxDate = maxDateStr(14);
 
-    if (requestedDate < today) {
+    if (fecha < today) {
       return res.status(400).json({ error: 'No se pueden ver fechas pasadas' });
     }
-    if (requestedDate > maxDate) {
+    if (fecha > maxDate) {
       return res.status(400).json({ error: 'Solo se pueden ver hasta 14 días en adelante' });
     }
 
@@ -89,14 +87,14 @@ router.get('/disponibilidad/:fecha', async (req, res) => {
     // Build availability grid
     const info = getInfoPrecios();
     const disponibilidad = [];
-    const now = new Date();
-    const isToday = fecha === now.toLocaleDateString('en-CA'); // YYYY-MM-DD format
+    const isToday = fecha === today;
+    const nowHour = currentHour();
 
     for (let h = info.horaApertura; h < info.horaCierre; h++) {
       let estado = 'disponible';
 
       // If today, mark past hours as unavailable
-      if (isToday && h <= now.getHours()) {
+      if (isToday && h <= nowHour) {
         estado = 'pasado';
       } else {
         // Check if this hour is occupied
@@ -155,14 +153,11 @@ router.post('/reservas', upload.single('comprobante'), async (req, res) => {
       return res.status(400).json({ error: 'Método de pago inválido' });
     }
 
-    // Check date range
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const requestedDate = new Date(fecha + 'T00:00:00');
-    const maxDate = new Date(today);
-    maxDate.setDate(maxDate.getDate() + 14);
+    // Check date range, en hora de Lima
+    const today = todayStr();
+    const maxDate = maxDateStr(14);
 
-    if (requestedDate < today || requestedDate > maxDate) {
+    if (fecha < today || fecha > maxDate) {
       return res.status(400).json({ error: 'Fecha fuera del rango permitido' });
     }
 
@@ -485,14 +480,15 @@ router.get('/admin/reservas/:id/comprobante', authenticateToken, async (req, res
  */
 router.get('/admin/ingresos', authenticateToken, async (req, res) => {
   try {
-    const today = new Date().toLocaleDateString('en-CA');
+    const today = todayStr();
 
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    const sevenDaysAgoStr = sevenDaysAgo.toLocaleDateString('en-CA');
+    const [y, m] = today.split('-');
+    const monthStart = `${y}-${m}-01`;
 
-    const now = new Date();
-    const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+    const [sy, sm, sd] = today.split('-').map(Number);
+    const sevenDaysAgoDate = new Date(Date.UTC(sy, sm - 1, sd));
+    sevenDaysAgoDate.setUTCDate(sevenDaysAgoDate.getUTCDate() - 7);
+    const sevenDaysAgoStr = sevenDaysAgoDate.toISOString().slice(0, 10);
 
     const [
       { data: diarioRows, error: e1 },

@@ -579,7 +579,80 @@ function switchTab(tab) {
     btn.classList.toggle('active', btn.dataset.tab === tab);
   });
 
-  loadReservations();
+  const isConfig = tab === 'config';
+  document.getElementById('configPanel').style.display = isConfig ? '' : 'none';
+  document.getElementById('reservationsList').style.display = isConfig ? 'none' : '';
+  document.getElementById('dateFilterSection').style.display = isConfig ? 'none' : '';
+
+  if (isConfig) {
+    loadConfigPago();
+  } else {
+    loadReservations();
+  }
+}
+
+// ==========================================
+// Payment Config
+// ==========================================
+async function loadConfigPago() {
+  try {
+    const response = await fetch(`${API_BASE}/api/config-pago`);
+    if (!response.ok) return;
+
+    const cfg = await response.json();
+    document.getElementById('cfgYapeNumero').value = cfg.yape_numero || '';
+    document.getElementById('cfgYapeTitular').value = cfg.yape_titular || '';
+    document.getElementById('cfgPlinNumero').value = cfg.plin_numero || '';
+    document.getElementById('cfgPlinTitular').value = cfg.plin_titular || '';
+    document.getElementById('cfgBancoNombre').value = cfg.banco_nombre || '';
+    document.getElementById('cfgBancoNumeroCuenta').value = cfg.banco_numero_cuenta || '';
+    document.getElementById('cfgBancoCci').value = cfg.banco_cci || '';
+    document.getElementById('cfgBancoTitular').value = cfg.banco_titular || '';
+  } catch (error) {
+    console.error('Error cargando datos de pago:', error);
+    showToast('Error al cargar los datos de pago', 'error');
+  }
+}
+
+async function saveConfigPago(event) {
+  event.preventDefault();
+
+  const btn = document.getElementById('btnSaveConfig');
+  btn.disabled = true;
+  btn.textContent = 'Guardando...';
+
+  const payload = {
+    yape_numero: document.getElementById('cfgYapeNumero').value.trim(),
+    yape_titular: document.getElementById('cfgYapeTitular').value.trim(),
+    plin_numero: document.getElementById('cfgPlinNumero').value.trim(),
+    plin_titular: document.getElementById('cfgPlinTitular').value.trim(),
+    banco_nombre: document.getElementById('cfgBancoNombre').value.trim(),
+    banco_numero_cuenta: document.getElementById('cfgBancoNumeroCuenta').value.trim(),
+    banco_cci: document.getElementById('cfgBancoCci').value.trim(),
+    banco_titular: document.getElementById('cfgBancoTitular').value.trim()
+  };
+
+  try {
+    const response = await fetch(`${API_BASE}/api/admin/config-pago`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) throw new Error(data.error || 'Error al guardar');
+
+    showToast('✅ Datos de pago guardados', 'success');
+  } catch (error) {
+    showToast(error.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Guardar datos de pago';
+  }
 }
 
 function onDateFilterChange() {

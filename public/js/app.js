@@ -10,6 +10,8 @@ const state = {
   selectedDate: null,
   selectedSlots: [],
   paymentMethod: 'yape',
+  paymentConfig: {},
+  selectedFile: null,
   availability: [],
   currentReservationId: null
 };
@@ -21,7 +23,58 @@ const API_BASE = '';
 // ==========================================
 document.addEventListener('DOMContentLoaded', () => {
   initDatePicker();
+  loadPaymentConfig();
 });
+
+// ==========================================
+// Payment Config
+// ==========================================
+async function loadPaymentConfig() {
+  try {
+    const response = await fetch(`${API_BASE}/api/config-pago`);
+    if (!response.ok) return;
+    state.paymentConfig = await response.json();
+    renderPaymentInfo();
+  } catch (error) {
+    console.error('Error cargando datos de pago:', error);
+  }
+}
+
+function renderPaymentInfo() {
+  const container = document.getElementById('paymentInfo');
+  if (!container) return;
+
+  const cfg = state.paymentConfig || {};
+  let html = '';
+
+  if (state.paymentMethod === 'yape') {
+    html = cfg.yape_numero
+      ? `<div class="payment-info-row"><span>💜 Yape</span><strong>${escapeHtml(cfg.yape_numero)}</strong></div>${cfg.yape_titular ? `<div class="payment-info-sub">A nombre de ${escapeHtml(cfg.yape_titular)}</div>` : ''}`
+      : `<div class="payment-info-empty">El administrador aún no configuró el número de Yape.</div>`;
+  } else if (state.paymentMethod === 'plin') {
+    html = cfg.plin_numero
+      ? `<div class="payment-info-row"><span>💚 Plin</span><strong>${escapeHtml(cfg.plin_numero)}</strong></div>${cfg.plin_titular ? `<div class="payment-info-sub">A nombre de ${escapeHtml(cfg.plin_titular)}</div>` : ''}`
+      : `<div class="payment-info-empty">El administrador aún no configuró el número de Plin.</div>`;
+  } else if (state.paymentMethod === 'transferencia') {
+    if (cfg.banco_numero_cuenta) {
+      html = `
+        <div class="payment-info-row"><span>🏦 ${escapeHtml(cfg.banco_nombre || 'Banco')}</span><strong>${escapeHtml(cfg.banco_numero_cuenta)}</strong></div>
+        ${cfg.banco_cci ? `<div class="payment-info-sub">CCI: ${escapeHtml(cfg.banco_cci)}</div>` : ''}
+        ${cfg.banco_titular ? `<div class="payment-info-sub">A nombre de ${escapeHtml(cfg.banco_titular)}</div>` : ''}
+      `;
+    } else {
+      html = `<div class="payment-info-empty">El administrador aún no configuró la cuenta bancaria.</div>`;
+    }
+  }
+
+  container.innerHTML = html;
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
 
 // ==========================================
 // Date Picker
@@ -303,15 +356,20 @@ function selectPayment(method) {
   document.querySelectorAll('.payment-method').forEach(el => {
     el.classList.toggle('active', el.dataset.method === method);
   });
+  renderPaymentInfo();
 }
 
 // ==========================================
 // File Upload
 // ==========================================
+function triggerFileInput(source) {
+  const inputId = source === 'camera' ? 'inputFileCamera' : 'inputFileGallery';
+  document.getElementById(inputId).click();
+}
+
 function previewFile(event) {
   const file = event.target.files[0];
-  const uploadArea = document.getElementById('uploadArea');
-  
+
   if (!file) return;
 
   // Validate file size (10MB)
@@ -321,32 +379,42 @@ function previewFile(event) {
     return;
   }
 
+  state.selectedFile = file;
+
+  const uploadArea = document.getElementById('uploadArea');
   const reader = new FileReader();
   reader.onload = (e) => {
     uploadArea.classList.add('has-file');
     uploadArea.innerHTML = `
       <img src="${e.target.result}" class="upload-preview" alt="Comprobante">
       <button type="button" class="remove-file" onclick="removeFile(event)">✕</button>
-      <input type="file" id="inputFile" accept="image/*" capture="environment" onchange="previewFile(event)" required>
     `;
-    // Re-set the file to the new input
-    const newInput = document.getElementById('inputFile');
-    const dt = new DataTransfer();
-    dt.items.add(file);
-    newInput.files = dt.files;
   };
   reader.readAsDataURL(file);
 }
 
 function removeFile(event) {
   event.stopPropagation();
+  state.selectedFile = null;
+  document.getElementById('inputFileCamera').value = '';
+  document.getElementById('inputFileGallery').value = '';
+
   const uploadArea = document.getElementById('uploadArea');
   uploadArea.classList.remove('has-file');
   uploadArea.innerHTML = `
     <span class="upload-icon">📸</span>
-    <span class="upload-text">Toca para subir foto del comprobante</span>
+    <span class="upload-text">Sube o toma una foto del comprobante</span>
     <span class="upload-hint">JPG, PNG o captura de pantalla</span>
-    <input type="file" id="inputFile" accept="image/*" capture="environment" onchange="previewFile(event)" required>
+    <div class="upload-buttons">
+      <button type="button" class="btn-upload-option" onclick="triggerFileInput('camera')">
+        <span>📷</span><span>Tomar foto</span>
+      </button>
+      <button type="button" class="btn-upload-option" onclick="triggerFileInput('gallery')">
+        <span>🖼️</span><span>Elegir de galería</span>
+      </button>
+    </div>
+    <input type="file" id="inputFileCamera" class="upload-input-hidden" accept="image/*" capture="environment" onchange="previewFile(event)">
+    <input type="file" id="inputFileGallery" class="upload-input-hidden" accept="image/*" onchange="previewFile(event)">
   `;
 }
 
@@ -358,13 +426,12 @@ async function submitBooking(event) {
 
   const name = document.getElementById('inputName').value.trim();
   const phone = document.getElementById('inputPhone').value.trim();
-  const fileInput = document.getElementById('inputFile');
   const submitBtn = document.getElementById('btnSubmit');
 
   // Validate
   if (!name) return showToast('Ingresa tu nombre', 'error');
   if (!phone || phone.length !== 9) return showToast('Ingresa un teléfono válido de 9 dígitos', 'error');
-  if (!fileInput.files[0]) return showToast('Sube el comprobante de pago', 'error');
+  if (!state.selectedFile) return showToast('Sube el comprobante de pago', 'error');
 
   const startHour = Math.min(...state.selectedSlots);
   const endHour = Math.max(...state.selectedSlots) + 1;
@@ -377,7 +444,7 @@ async function submitBooking(event) {
   formData.append('nombre_cliente', name);
   formData.append('telefono', phone);
   formData.append('metodo_pago', state.paymentMethod);
-  formData.append('comprobante', fileInput.files[0]);
+  formData.append('comprobante', state.selectedFile);
 
   // Disable button
   submitBtn.disabled = true;

@@ -11,6 +11,7 @@ const { expireOldReservations } = require('./src/utils/expiration');
 
 const authRoutes = require('./src/routes/auth');
 const reservasRoutes = require('./src/routes/reservas');
+const configRoutes = require('./src/routes/config');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -32,6 +33,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 // API Routes
 app.use('/api/admin', authRoutes);
 app.use('/api', reservasRoutes);
+app.use('/api', configRoutes);
 
 // VAPID public key endpoint (needed by the client for push subscription)
 app.get('/api/vapid-public-key', (req, res) => {
