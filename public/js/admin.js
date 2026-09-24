@@ -483,6 +483,11 @@ async function confirmReservation(id) {
 
     if (data.whatsapp_url) {
       state.whatsappLinks[id] = data.whatsapp_url;
+      // Al confirmar, la reserva deja de aparecer en la pestaña "Pendientes"
+      // en el siguiente refresco, así que el botón de WhatsApp en la tarjeta
+      // desaparecería antes de que el admin llegue a hacer clic. Por eso se
+      // abre automáticamente en vez de depender de ese botón.
+      window.open(data.whatsapp_url, '_blank', 'noopener');
     }
 
     // Reload data
@@ -510,6 +515,7 @@ async function rejectReservation(id) {
 
     if (data.whatsapp_url) {
       state.whatsappLinks[id] = data.whatsapp_url;
+      window.open(data.whatsapp_url, '_blank', 'noopener');
     }
 
     loadDashboard();
