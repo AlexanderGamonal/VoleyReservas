@@ -24,7 +24,20 @@ const API_BASE = '';
 document.addEventListener('DOMContentLoaded', () => {
   initDatePicker();
   loadPaymentConfig();
+  registerServiceWorker();
 });
+
+/**
+ * Registra el service worker para que la app sea instalable (PWA) y
+ * tenga el shell estático disponible sin conexión. No maneja push aquí:
+ * eso solo aplica al panel admin (ver public/js/admin.js).
+ */
+function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.register('/sw.js').catch((error) => {
+    console.error('Error registrando service worker:', error);
+  });
+}
 
 // ==========================================
 // Payment Config

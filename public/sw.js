@@ -3,6 +3,52 @@
  * Handles push notifications and offline caching
  */
 
+const CACHE_NAME = 'voleyreservas-shell-v1';
+const APP_SHELL = [
+  '/',
+  '/index.html',
+  '/admin.html',
+  '/css/styles.css',
+  '/css/admin.css',
+  '/js/app.js',
+  '/js/admin.js',
+  '/manifest.json',
+  '/manifest-admin.json',
+  '/img/icon-192.png',
+  '/img/icon-512.png'
+];
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then((cache) => cache.addAll(APP_SHELL))
+      .then(() => self.skipWaiting())
+  );
+});
+
+// Stale-while-revalidate para el shell estático de la app. La API nunca se
+// cachea: los datos de reservas siempre deben venir de red.
+self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET') return;
+  if (event.request.url.includes('/api/')) return;
+
+  event.respondWith(
+    caches.match(event.request).then((cached) => {
+      const network = fetch(event.request)
+        .then((response) => {
+          if (response && response.ok) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          }
+          return response;
+        })
+        .catch(() => cached);
+
+      return cached || network;
+    })
+  );
+});
+
 // Listen for push events
 self.addEventListener('push', (event) => {
   let data = {
@@ -64,7 +110,13 @@ self.addEventListener('notificationclick', (event) => {
   );
 });
 
-// Activate event
+// Activate event: limpia versiones viejas del cache del shell
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    caches.keys()
+      .then((names) => Promise.all(
+        names.filter((name) => name !== CACHE_NAME).map((name) => caches.delete(name))
+      ))
+      .then(() => self.clients.claim())
+  );
 });
