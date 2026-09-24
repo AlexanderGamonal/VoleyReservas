@@ -25,6 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initDatePicker();
   loadPaymentConfig();
   registerServiceWorker();
+  initInstallBanner();
 });
 
 /**
@@ -37,6 +38,60 @@ function registerServiceWorker() {
   navigator.serviceWorker.register('/sw.js').catch((error) => {
     console.error('Error registrando service worker:', error);
   });
+}
+
+// ==========================================
+// Install Banner (PWA)
+// ==========================================
+// Chrome ya no muestra siempre el mini-infobar automático de instalación
+// (heurísticas de "engagement" del navegador, versión, o si ya se
+// descartó antes) — por eso se ofrece un botón propio: se escucha
+// beforeinstallprompt y se guarda el evento para dispararlo al clic.
+let deferredInstallPrompt = null;
+
+function initInstallBanner() {
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+    || window.navigator.standalone === true;
+  if (isStandalone) return;
+
+  let dismissed = false;
+  try { dismissed = localStorage.getItem('voley_install_dismissed') === '1'; } catch (e) { /* ignore */ }
+  if (dismissed) return;
+
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+
+  if (isIOS) {
+    document.getElementById('installBannerText').innerHTML =
+      '📲 Para instalar: toca <strong>Compartir</strong> y luego <strong>"Agregar a pantalla de inicio"</strong>';
+    document.getElementById('btnInstallApp').style.display = 'none';
+    document.getElementById('installBanner').style.display = '';
+    return;
+  }
+
+  window.addEventListener('beforeinstallprompt', (event) => {
+    event.preventDefault();
+    deferredInstallPrompt = event;
+    document.getElementById('installBanner').style.display = '';
+  });
+
+  window.addEventListener('appinstalled', () => {
+    deferredInstallPrompt = null;
+    document.getElementById('installBanner').style.display = 'none';
+  });
+}
+
+async function triggerInstall() {
+  document.getElementById('installBanner').style.display = 'none';
+  if (!deferredInstallPrompt) return;
+
+  deferredInstallPrompt.prompt();
+  await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+}
+
+function dismissInstallBanner() {
+  document.getElementById('installBanner').style.display = 'none';
+  try { localStorage.setItem('voley_install_dismissed', '1'); } catch (e) { /* ignore */ }
 }
 
 // ==========================================

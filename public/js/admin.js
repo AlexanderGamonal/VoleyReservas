@@ -33,12 +33,63 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  initInstallBanner();
+
   if (state.token) {
     verifyToken();
   } else {
     showLoginScreen();
   }
 });
+
+// ==========================================
+// Install Banner (PWA)
+// ==========================================
+// El listener se registra ya (aunque el admin aún no haya iniciado
+// sesión) porque beforeinstallprompt puede dispararse una sola vez al
+// cargar la página; el banner en sí vive dentro de #adminApp y solo se
+// ve una vez logueado.
+let deferredInstallPrompt = null;
+
+function initInstallBanner() {
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+    || window.navigator.standalone === true;
+  if (isStandalone) return;
+
+  let dismissed = false;
+  try { dismissed = localStorage.getItem('voley_admin_install_dismissed') === '1'; } catch (e) { /* ignore */ }
+  if (dismissed) return;
+
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+
+  if (isIOS) {
+    document.getElementById('installBannerText').innerHTML =
+      '📲 Para instalar: toca <strong>Compartir</strong> y luego <strong>"Agregar a pantalla de inicio"</strong>';
+    document.getElementById('btnInstallApp').style.display = 'none';
+    document.getElementById('installBanner').style.display = '';
+    return;
+  }
+
+  window.addEventListener('beforeinstallprompt', (event) => {
+    event.preventDefault();
+    deferredInstallPrompt = event;
+    document.getElementById('installBanner').style.display = '';
+  });
+
+  window.addEventListener('appinstalled', () => {
+    deferredInstallPrompt = null;
+    document.getElementById('installBanner').style.display = 'none';
+  });
+}
+
+async function triggerInstall() {
+  document.getElementById('installBanner').style.display = 'none';
+  if (!deferredInstallPrompt) return;
+
+  deferredInstallPrompt.prompt();
+  await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+}
 
 // ==========================================
 // Authentication

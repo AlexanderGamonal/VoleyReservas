@@ -169,6 +169,59 @@ body::before {
 }
 
 /* ==========================================
+   Install App Banner
+   ========================================== */
+.install-banner {
+  max-width: 600px;
+  margin: var(--space-md) auto 0;
+  padding: var(--space-md) var(--space-lg);
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.install-banner .banner-text {
+  flex: 1;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.install-banner .banner-text strong {
+  color: var(--accent-blue);
+}
+
+.btn-install {
+  flex-shrink: 0;
+  padding: var(--space-sm) var(--space-md);
+  background: var(--accent-blue);
+  border: none;
+  border-radius: var(--radius-full);
+  color: white;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-dismiss-install {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+/* ==========================================
    Main Content
    ========================================== */
 .main-content {
