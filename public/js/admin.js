@@ -11,7 +11,12 @@ const state = {
   currentTab: 'pendientes',
   filterDate: new Date().toLocaleDateString('en-CA'),
   reservations: [],
-  refreshInterval: null
+  refreshInterval: null,
+  // Enlaces de WhatsApp de reservas recién confirmadas/rechazadas. Se guardan
+  // en el estado (no solo en el DOM) porque el auto-refresh cada 15s vuelve
+  // a renderizar la lista completa y borraría el botón antes de que el
+  // admin alcance a hacer clic.
+  whatsappLinks: {}
 };
 
 const API_BASE = '';
@@ -394,8 +399,16 @@ function renderReservationCard(r) {
     `;
   }
 
-  // WhatsApp URL if exists (stored temporarily in DOM after confirm/reject)
+  // Enlace de WhatsApp de una reserva recién confirmada/rechazada (ver state.whatsappLinks)
   let whatsappHtml = '';
+  const waUrl = state.whatsappLinks[r.id];
+  if (waUrl) {
+    whatsappHtml = `
+      <a href="${waUrl}" target="_blank" rel="noopener" class="btn-whatsapp" onclick="dismissWhatsapp(${r.id})">
+        💬 Enviar mensaje por WhatsApp
+      </a>
+    `;
+  }
 
   return `
     <div class="reservation-card ${r.estado}" id="card-${r.id}">
@@ -434,7 +447,7 @@ function renderReservationCard(r) {
         </div>
       </div>
       ${actionsHtml}
-      <div id="whatsapp-${r.id}"></div>
+      ${whatsappHtml}
     </div>
   `;
 }
@@ -468,14 +481,8 @@ async function confirmReservation(id) {
 
     showToast('✅ Reserva confirmada', 'success');
 
-    // Show WhatsApp button
-    const whatsappContainer = document.getElementById(`whatsapp-${id}`);
-    if (whatsappContainer && data.whatsapp_url) {
-      whatsappContainer.innerHTML = `
-        <a href="${data.whatsapp_url}" target="_blank" class="btn-whatsapp">
-          💬 Enviar confirmación por WhatsApp
-        </a>
-      `;
+    if (data.whatsapp_url) {
+      state.whatsappLinks[id] = data.whatsapp_url;
     }
 
     // Reload data
@@ -501,14 +508,8 @@ async function rejectReservation(id) {
 
     showToast('Reserva rechazada', 'success');
 
-    // Show WhatsApp button
-    const whatsappContainer = document.getElementById(`whatsapp-${id}`);
-    if (whatsappContainer && data.whatsapp_url) {
-      whatsappContainer.innerHTML = `
-        <a href="${data.whatsapp_url}" target="_blank" class="btn-whatsapp">
-          💬 Notificar al cliente por WhatsApp
-        </a>
-      `;
+    if (data.whatsapp_url) {
+      state.whatsappLinks[id] = data.whatsapp_url;
     }
 
     loadDashboard();
@@ -516,6 +517,10 @@ async function rejectReservation(id) {
   } catch (error) {
     showToast(error.message, 'error');
   }
+}
+
+function dismissWhatsapp(id) {
+  delete state.whatsappLinks[id];
 }
 
 async function cancelReservation(id) {

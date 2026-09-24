@@ -58,6 +58,10 @@ app.use((err, req, res, next) => {
     return res.status(400).json({ error: err.message });
   }
 
+  if (err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(400).json({ error: 'La imagen es demasiado grande. Máximo 4MB.' });
+  }
+
   res.status(500).json({ error: 'Error interno del servidor' });
 });
 
