@@ -426,6 +426,75 @@ body::before {
 }
 
 /* ==========================================
+   Consultar otro período (ingresos)
+   ========================================== */
+.rango-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-sm);
+}
+
+.rango-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rango-field .form-label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.rango-field input[type="date"],
+.rango-field input[type="month"] {
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg-card);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.85rem;
+  outline: none;
+}
+
+.rango-field input:focus {
+  border-color: var(--accent-blue);
+}
+
+.rango-divider {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  padding-bottom: var(--space-sm);
+}
+
+.rango-result {
+  margin-top: var(--space-md);
+}
+
+.rango-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-md);
+  background: var(--bg-card);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-md);
+}
+
+.rango-total {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
+  font-size: 1.4rem;
+  color: var(--accent-green);
+}
+
+.rango-sub {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* ==========================================
    Tab Navigation
    ========================================== */
 .tabs {

@@ -310,6 +310,29 @@ router.get('/admin/reservas', authenticateToken, async (req, res) => {
 });
 
 /**
+ * GET /api/admin/reservas/count
+ * Lightweight count for tab badges, independent of the reservation list
+ * currently being displayed/filtered in the UI.
+ */
+router.get('/admin/reservas/count', authenticateToken, async (req, res) => {
+  try {
+    const { fecha, estado } = req.query;
+
+    let query = supabase.from('voley_reservas').select('id', { count: 'exact', head: true });
+    if (fecha) query = query.eq('fecha', fecha);
+    if (estado) query = query.eq('estado', estado);
+
+    const { count, error } = await query;
+    if (error) throw error;
+
+    res.json({ count: count || 0 });
+  } catch (error) {
+    console.error('Error contando reservas:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+/**
  * PUT /api/admin/reservas/:id/confirmar
  * Confirm a pending reservation
  */
@@ -531,6 +554,54 @@ router.get('/admin/ingresos', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('Error obteniendo ingresos:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+/**
+ * GET /api/admin/ingresos/rango
+ * Income summary for an arbitrary custom date range (e.g. a past month
+ * or a specific week), for consolidated reports beyond the fixed
+ * día/semana/mes windows of /api/admin/ingresos.
+ */
+router.get('/admin/ingresos/rango', authenticateToken, async (req, res) => {
+  try {
+    const { desde, hasta } = req.query;
+
+    if (!desde || !hasta || !/^\d{4}-\d{2}-\d{2}$/.test(desde) || !/^\d{4}-\d{2}-\d{2}$/.test(hasta)) {
+      return res.status(400).json({ error: 'Parámetros "desde" y "hasta" inválidos (formato YYYY-MM-DD)' });
+    }
+
+    if (desde > hasta) {
+      return res.status(400).json({ error: 'La fecha "desde" no puede ser posterior a "hasta"' });
+    }
+
+    const { data: rows, error } = await supabase
+      .from('voley_reservas')
+      .select('fecha, monto_total')
+      .gte('fecha', desde)
+      .lte('fecha', hasta)
+      .eq('estado', 'confirmada')
+      .order('fecha', { ascending: true });
+
+    if (error) throw error;
+
+    const desgloseMap = {};
+    for (const r of rows) {
+      if (!desgloseMap[r.fecha]) desgloseMap[r.fecha] = { fecha: r.fecha, total: 0, cantidad: 0 };
+      desgloseMap[r.fecha].total += Number(r.monto_total);
+      desgloseMap[r.fecha].cantidad += 1;
+    }
+
+    res.json({
+      desde,
+      hasta,
+      total: rows.reduce((acc, r) => acc + Number(r.monto_total), 0),
+      cantidad: rows.length,
+      desglose: Object.values(desgloseMap)
+    });
+  } catch (error) {
+    console.error('Error obteniendo ingresos por rango:', error);
     res.status(500).json({ error: 'Error interno del servidor' });
   }
 });

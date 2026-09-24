@@ -232,13 +232,34 @@ async function loadDashboard() {
     document.getElementById('metricWeekly').querySelector('.metric-value').textContent = `S/ ${data.semanal.total}`;
     document.getElementById('metricWeekly').querySelector('.metric-sub').textContent = `${data.semanal.cantidad} reserva(s)`;
 
-    // Update pending tab count
+    // Update pending tab count (siempre global, sin filtro de fecha)
     document.getElementById('tabPendingCount').textContent = data.pendientes;
 
     // Update chart
     renderChart(data.desglose_diario);
   } catch (error) {
     console.error('Error loading dashboard:', error);
+  }
+
+  loadConfirmedCount();
+}
+
+/**
+ * El badge de "Confirmadas" se calcula aparte de la lista que se muestra
+ * (que solo trae los datos de la pestaña activa) para que siempre refleje
+ * el total real del día filtrado, sin importar qué pestaña esté abierta.
+ */
+async function loadConfirmedCount() {
+  try {
+    const response = await fetch(
+      `${API_BASE}/api/admin/reservas/count?estado=confirmada&fecha=${state.filterDate}`,
+      { headers: { 'Authorization': `Bearer ${state.token}` } }
+    );
+    if (!response.ok) return;
+    const { count } = await response.json();
+    document.getElementById('tabConfirmedCount').textContent = count;
+  } catch (error) {
+    console.error('Error contando confirmadas:', error);
   }
 }
 
@@ -289,7 +310,7 @@ function renderChart(data) {
 async function loadReservations() {
   try {
     const params = new URLSearchParams();
-    
+
     if (state.currentTab !== 'todas') {
       const estadoMap = {
         'pendientes': 'pendiente',
@@ -300,7 +321,10 @@ async function loadReservations() {
       }
     }
 
-    if (state.filterDate) {
+    // Los pendientes requieren acción inmediata, así que se muestran siempre
+    // sin importar la fecha seleccionada; el filtro de fecha solo aplica a
+    // confirmadas y "todas" (ver también dateFilterSection en switchTab).
+    if (state.filterDate && state.currentTab !== 'pendientes') {
       params.set('fecha', state.filterDate);
     }
 
@@ -314,14 +338,21 @@ async function loadReservations() {
     }
 
     state.reservations = await response.json();
+    sortReservations();
     renderReservations();
-
-    // Update confirmed count
-    const confirmed = state.reservations.filter(r => r.estado === 'confirmada').length;
-    document.getElementById('tabConfirmedCount').textContent = confirmed;
   } catch (error) {
     console.error('Error loading reservations:', error);
   }
+}
+
+/**
+ * Orden de llegada, más reciente primero. En la pestaña "Confirmadas" se
+ * ordena por el momento en que se confirmó (no por cuándo se creó la
+ * reserva), para que la última acción del admin aparezca arriba.
+ */
+function sortReservations() {
+  const field = state.currentTab === 'confirmadas' ? 'confirmed_at' : 'created_at';
+  state.reservations.sort((a, b) => new Date(b[field] || b.created_at) - new Date(a[field] || a.created_at));
 }
 
 function renderReservations() {
@@ -600,7 +631,8 @@ function switchTab(tab) {
   const isConfig = tab === 'config';
   document.getElementById('configPanel').style.display = isConfig ? '' : 'none';
   document.getElementById('reservationsList').style.display = isConfig ? 'none' : '';
-  document.getElementById('dateFilterSection').style.display = isConfig ? 'none' : '';
+  // El filtro de fecha no aplica a "Pendientes" (siempre se muestran todas).
+  document.getElementById('dateFilterSection').style.display = (isConfig || tab === 'pendientes') ? 'none' : '';
 
   if (isConfig) {
     loadConfigPago();
@@ -676,12 +708,72 @@ async function saveConfigPago(event) {
 function onDateFilterChange() {
   state.filterDate = document.getElementById('dateFilter').value;
   loadReservations();
+  loadConfirmedCount();
 }
 
 function filterToday() {
   state.filterDate = new Date().toLocaleDateString('en-CA');
   document.getElementById('dateFilter').value = state.filterDate;
   loadReservations();
+  loadConfirmedCount();
+}
+
+// ==========================================
+// Ingresos por período personalizado
+// ==========================================
+function consultarMes() {
+  const value = document.getElementById('rangoMes').value; // YYYY-MM
+  if (!value) return;
+
+  const [y, m] = value.split('-');
+  const desde = `${y}-${m}-01`;
+  const ultimoDia = new Date(Number(y), Number(m), 0).getDate();
+  const hasta = `${y}-${m}-${String(ultimoDia).padStart(2, '0')}`;
+
+  document.getElementById('rangoDesde').value = desde;
+  document.getElementById('rangoHasta').value = hasta;
+
+  fetchIngresosRango(desde, hasta);
+}
+
+function consultarRango() {
+  const desde = document.getElementById('rangoDesde').value;
+  const hasta = document.getElementById('rangoHasta').value;
+
+  if (!desde || !hasta) return showToast('Selecciona un rango de fechas', 'error');
+  if (desde > hasta) return showToast('La fecha "desde" no puede ser posterior a "hasta"', 'error');
+
+  document.getElementById('rangoMes').value = '';
+  fetchIngresosRango(desde, hasta);
+}
+
+async function fetchIngresosRango(desde, hasta) {
+  const resultEl = document.getElementById('rangoResult');
+  resultEl.innerHTML = '<div class="empty-text">Consultando...</div>';
+
+  try {
+    const response = await fetch(`${API_BASE}/api/admin/ingresos/rango?desde=${desde}&hasta=${hasta}`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) throw new Error(data.error || 'Error consultando el período');
+
+    resultEl.innerHTML = `
+      <div class="rango-summary">
+        <div class="rango-total">S/ ${data.total}</div>
+        <div class="rango-sub">${data.cantidad} reserva(s) confirmada(s) · ${formatDateRange(data.desde)} - ${formatDateRange(data.hasta)}</div>
+      </div>
+    `;
+  } catch (error) {
+    resultEl.innerHTML = `<div class="empty-text">${escapeHtml(error.message)}</div>`;
+  }
+}
+
+function formatDateRange(dateStr) {
+  const d = new Date(dateStr + 'T12:00:00');
+  return d.toLocaleDateString('es-PE', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 // ==========================================
