@@ -25,6 +25,14 @@ const API_BASE = '';
 // Initialization
 // ==========================================
 document.addEventListener('DOMContentLoaded', () => {
+  // Registra el SW sin depender de que las notificaciones estén activadas,
+  // para que el panel sea instalable (PWA) desde la primera visita.
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch((error) => {
+      console.error('Error registrando service worker:', error);
+    });
+  }
+
   if (state.token) {
     verifyToken();
   } else {
