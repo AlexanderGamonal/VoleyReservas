@@ -91,6 +91,30 @@
         <div class="chart-container" id="chartContainer"></div>
       </div>
 
+      <!-- Consultar otro período -->
+      <div class="chart-section" id="rangoSection">
+        <div class="chart-header">
+          <span class="chart-title">🗓️ Consultar otro período</span>
+        </div>
+        <div class="rango-controls">
+          <div class="rango-field">
+            <label class="form-label">Mes</label>
+            <input type="month" id="rangoMes" onchange="consultarMes()">
+          </div>
+          <span class="rango-divider">o</span>
+          <div class="rango-field">
+            <label class="form-label">Desde</label>
+            <input type="date" id="rangoDesde">
+          </div>
+          <div class="rango-field">
+            <label class="form-label">Hasta</label>
+            <input type="date" id="rangoHasta">
+          </div>
+          <button class="btn-today" onclick="consultarRango()">Consultar</button>
+        </div>
+        <div class="rango-result" id="rangoResult"></div>
+      </div>
+
       <!-- Tabs -->
       <div class="tabs" id="tabs">
         <button class="tab-btn active pending-tab" data-tab="pendientes" onclick="switchTab('pendientes')">
