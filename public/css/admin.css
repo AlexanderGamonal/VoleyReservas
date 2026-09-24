@@ -310,6 +310,10 @@ body::before {
   transform: translateY(-2px);
 }
 
+.metric-card.clickable {
+  cursor: pointer;
+}
+
 .metric-card .metric-label {
   font-size: 0.75rem;
   text-transform: uppercase;

@@ -61,7 +61,7 @@
 
       <!-- Dashboard Metrics -->
       <div class="metrics-grid" id="metricsGrid">
-        <div class="metric-card pending" id="metricPending">
+        <div class="metric-card pending clickable" id="metricPending" onclick="goToTab('pendientes')">
           <div class="metric-label">⏳ Pendientes</div>
           <div class="metric-value">-</div>
           <div class="metric-sub">reservas por confirmar</div>
@@ -71,7 +71,7 @@
           <div class="metric-value">S/ -</div>
           <div class="metric-sub">confirmados</div>
         </div>
-        <div class="metric-card bookings" id="metricBookings">
+        <div class="metric-card bookings clickable" id="metricBookings" onclick="goToTab('confirmadas')">
           <div class="metric-label">📋 Reservas hoy</div>
           <div class="metric-value">-</div>
           <div class="metric-sub">confirmadas</div>
