@@ -374,9 +374,15 @@ function triggerFileInput(source) {
 const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
 const MAX_RAW_BYTES = 30 * 1024 * 1024;
 
+function showUploadState(view) {
+  document.getElementById('uploadEmpty').style.display = view === 'empty' ? '' : 'none';
+  document.getElementById('uploadProcessing').style.display = view === 'processing' ? '' : 'none';
+  document.getElementById('uploadPreviewWrap').style.display = view === 'preview' ? '' : 'none';
+  document.getElementById('uploadArea').classList.toggle('has-file', view === 'preview');
+}
+
 async function previewFile(event) {
   const file = event.target.files[0];
-  const uploadArea = document.getElementById('uploadArea');
 
   if (!file) return;
 
@@ -386,13 +392,7 @@ async function previewFile(event) {
     return;
   }
 
-  uploadArea.classList.add('has-file');
-  uploadArea.innerHTML = `
-    <div class="upload-processing">
-      <div class="spinner"></div>
-      <span>Procesando foto...</span>
-    </div>
-  `;
+  showUploadState('processing');
 
   let finalFile = file;
   try {
@@ -404,7 +404,8 @@ async function previewFile(event) {
 
   if (finalFile.size > MAX_UPLOAD_BYTES) {
     showToast('La foto sigue siendo muy pesada. Prueba con otra o recórtala.', 'error');
-    removeFile({ stopPropagation: () => {} });
+    clearFileInputs();
+    showUploadState('empty');
     return;
   }
 
@@ -412,10 +413,8 @@ async function previewFile(event) {
 
   const reader = new FileReader();
   reader.onload = (e) => {
-    uploadArea.innerHTML = `
-      <img src="${e.target.result}" class="upload-preview" alt="Comprobante">
-      <button type="button" class="remove-file" onclick="removeFile(event)">✕</button>
-    `;
+    document.getElementById('uploadPreviewImg').src = e.target.result;
+    showUploadState('preview');
   };
   reader.readAsDataURL(finalFile);
 }
@@ -425,7 +424,7 @@ async function previewFile(event) {
  * Si el navegador no soporta createImageBitmap o falla (p.ej. HEIC en
  * algunos Chrome), se devuelve el archivo original sin tocar.
  */
-function compressImage(file, maxDimension = 1600, quality = 0.75) {
+function compressImage(file, maxDimension = 1280, quality = 0.7) {
   return new Promise((resolve) => {
     if (!file.type.startsWith('image/') || typeof createImageBitmap !== 'function') {
       resolve(file);
@@ -466,29 +465,17 @@ function compressImage(file, maxDimension = 1600, quality = 0.75) {
   });
 }
 
+function clearFileInputs() {
+  document.getElementById('inputFileCamera').value = '';
+  document.getElementById('inputFileGallery').value = '';
+}
+
 function removeFile(event) {
   event.stopPropagation();
   state.selectedFile = null;
-  document.getElementById('inputFileCamera').value = '';
-  document.getElementById('inputFileGallery').value = '';
-
-  const uploadArea = document.getElementById('uploadArea');
-  uploadArea.classList.remove('has-file');
-  uploadArea.innerHTML = `
-    <span class="upload-icon">📸</span>
-    <span class="upload-text">Sube o toma una foto del comprobante</span>
-    <span class="upload-hint">JPG, PNG o captura de pantalla</span>
-    <div class="upload-buttons">
-      <button type="button" class="btn-upload-option" onclick="triggerFileInput('camera')">
-        <span>📷</span><span>Tomar foto</span>
-      </button>
-      <button type="button" class="btn-upload-option" onclick="triggerFileInput('gallery')">
-        <span>🖼️</span><span>Elegir de galería</span>
-      </button>
-    </div>
-    <input type="file" id="inputFileCamera" class="upload-input-hidden" accept="image/*" capture="environment" onchange="previewFile(event)">
-    <input type="file" id="inputFileGallery" class="upload-input-hidden" accept="image/*" onchange="previewFile(event)">
-  `;
+  clearFileInputs();
+  document.getElementById('uploadPreviewImg').src = '';
+  showUploadState('empty');
 }
 
 // ==========================================
@@ -523,21 +510,8 @@ async function submitBooking(event) {
   submitBtn.disabled = true;
   submitBtn.innerHTML = '<div class="spinner"></div><span>Enviando...</span>';
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 25000);
-
   try {
-    const response = await fetch(`${API_BASE}/api/reservas`, {
-      method: 'POST',
-      body: formData,
-      signal: controller.signal
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || 'Error al crear la reserva');
-    }
+    const data = await postReservaConReintento(formData);
 
     // Success!
     state.currentReservationId = data.reserva.id;
@@ -555,9 +529,44 @@ async function submitBooking(event) {
     }
     showToast(message, 'error');
   } finally {
-    clearTimeout(timeoutId);
     submitBtn.disabled = false;
     submitBtn.innerHTML = '<span>Enviar Reserva</span><span>✉️</span>';
+  }
+}
+
+/**
+ * Envía la reserva con un reintento automático: en redes móviles es común
+ * que la primera request de una conexión falle a nivel de red ("Failed to
+ * fetch") sin llegar siquiera al servidor. Un solo reintento silencioso
+ * resuelve la mayoría de esos casos sin molestar al usuario.
+ */
+async function postReservaConReintento(formData, attempt = 1) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 25000);
+
+  try {
+    const response = await fetch(`${API_BASE}/api/reservas`, {
+      method: 'POST',
+      body: formData,
+      signal: controller.signal
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Error al crear la reserva');
+    }
+
+    return data;
+  } catch (error) {
+    const isNetworkError = error.message === 'Failed to fetch';
+    if (isNetworkError && attempt < 2) {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      return postReservaConReintento(formData, attempt + 1);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
