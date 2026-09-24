@@ -110,9 +110,12 @@ function showAdminApp() {
   // Check notification permission
   checkNotificationPermission();
 
-  // Load data
+  // Load data. switchTab() (en vez de llamar loadReservations() directo)
+  // también aplica la visibilidad del filtro de fecha para la pestaña
+  // activa por defecto ("pendientes"); sin esto, el filtro quedaba
+  // visible al iniciar aunque no aplicara a esa pestaña.
   loadDashboard();
-  loadReservations();
+  switchTab(state.currentTab);
 
   // Auto-refresh every 15 seconds
   if (state.refreshInterval) clearInterval(state.refreshInterval);
@@ -639,6 +642,15 @@ function switchTab(tab) {
   } else {
     loadReservations();
   }
+}
+
+/**
+ * Al hacer clic en las tarjetas de métricas "Pendientes"/"Reservas hoy",
+ * cambia a la pestaña correspondiente y baja la vista hasta la lista.
+ */
+function goToTab(tab) {
+  switchTab(tab);
+  document.getElementById('tabs').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // ==========================================
