@@ -535,6 +535,85 @@ body::before {
 }
 
 /* ==========================================
+   Payment Config Panel
+   ========================================== */
+.config-panel {
+  background: var(--bg-glass);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+}
+
+.config-section {
+  margin-bottom: var(--space-lg);
+  padding-bottom: var(--space-lg);
+  border-bottom: 1px solid var(--border-glass);
+}
+
+.config-section:last-of-type {
+  border-bottom: none;
+  margin-bottom: var(--space-md);
+}
+
+.config-section-title {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 600;
+  font-size: 1rem;
+  margin-bottom: var(--space-md);
+}
+
+.config-panel .form-group {
+  margin-bottom: var(--space-md);
+}
+
+.config-panel .form-label {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-xs);
+}
+
+.config-panel .form-input {
+  width: 100%;
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg-card);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+
+.config-panel .form-input:focus {
+  border-color: var(--accent-blue);
+}
+
+.btn-save-config {
+  width: 100%;
+  padding: var(--space-md);
+  background: var(--gradient-primary);
+  border: none;
+  border-radius: var(--radius-md);
+  color: #fff;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: opacity var(--transition-fast);
+}
+
+.btn-save-config:hover {
+  opacity: 0.9;
+}
+
+.btn-save-config:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ==========================================
    Reservation Cards
    ========================================== */
 .reservations-list {

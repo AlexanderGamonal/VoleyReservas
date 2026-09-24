@@ -102,10 +102,13 @@
         <button class="tab-btn" data-tab="todas" onclick="switchTab('todas')">
           📋 Todas
         </button>
+        <button class="tab-btn" data-tab="config" onclick="switchTab('config')">
+          ⚙️ Datos de pago
+        </button>
       </div>
 
       <!-- Date Filter -->
-      <div class="date-filter">
+      <div class="date-filter" id="dateFilterSection">
         <input type="date" id="dateFilter" onchange="onDateFilterChange()">
         <button class="btn-today" onclick="filterToday()">Hoy</button>
       </div>
@@ -116,6 +119,57 @@
           <div class="empty-icon">📋</div>
           <div class="empty-text">Cargando reservas...</div>
         </div>
+      </div>
+
+      <!-- Payment Config Panel -->
+      <div class="config-panel" id="configPanel" style="display: none;">
+        <form id="configForm" onsubmit="saveConfigPago(event)">
+          <div class="config-section">
+            <h3 class="config-section-title">💜 Yape</h3>
+            <div class="form-group">
+              <label class="form-label">Número de Yape</label>
+              <input type="text" class="form-input" id="cfgYapeNumero" placeholder="Ej: 987654321">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Nombre del titular</label>
+              <input type="text" class="form-input" id="cfgYapeTitular" placeholder="Ej: Juan Pérez">
+            </div>
+          </div>
+
+          <div class="config-section">
+            <h3 class="config-section-title">💚 Plin</h3>
+            <div class="form-group">
+              <label class="form-label">Número de Plin</label>
+              <input type="text" class="form-input" id="cfgPlinNumero" placeholder="Ej: 987654321">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Nombre del titular</label>
+              <input type="text" class="form-input" id="cfgPlinTitular" placeholder="Ej: Juan Pérez">
+            </div>
+          </div>
+
+          <div class="config-section">
+            <h3 class="config-section-title">🏦 Transferencia bancaria</h3>
+            <div class="form-group">
+              <label class="form-label">Banco</label>
+              <input type="text" class="form-input" id="cfgBancoNombre" placeholder="Ej: BCP">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Número de cuenta</label>
+              <input type="text" class="form-input" id="cfgBancoNumeroCuenta" placeholder="Ej: 191-1234567-0-12">
+            </div>
+            <div class="form-group">
+              <label class="form-label">CCI</label>
+              <input type="text" class="form-input" id="cfgBancoCci" placeholder="Ej: 00219100123456701234">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Nombre del titular</label>
+              <input type="text" class="form-input" id="cfgBancoTitular" placeholder="Ej: Juan Pérez">
+            </div>
+          </div>
+
+          <button type="submit" class="btn-save-config" id="btnSaveConfig">Guardar datos de pago</button>
+        </form>
       </div>
     </main>
   </div>

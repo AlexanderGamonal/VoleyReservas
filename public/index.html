@@ -125,15 +125,25 @@
               <span class="method-name">Transferencia</span>
             </div>
           </div>
+          <div class="payment-info" id="paymentInfo"></div>
         </div>
 
         <div class="form-group">
           <label class="form-label">Comprobante de pago</label>
           <div class="upload-area" id="uploadArea">
             <span class="upload-icon">📸</span>
-            <span class="upload-text">Toca para subir foto del comprobante</span>
+            <span class="upload-text">Sube o toma una foto del comprobante</span>
             <span class="upload-hint">JPG, PNG o captura de pantalla</span>
-            <input type="file" id="inputFile" accept="image/*" capture="environment" onchange="previewFile(event)" required>
+            <div class="upload-buttons">
+              <button type="button" class="btn-upload-option" onclick="triggerFileInput('camera')">
+                <span>📷</span><span>Tomar foto</span>
+              </button>
+              <button type="button" class="btn-upload-option" onclick="triggerFileInput('gallery')">
+                <span>🖼️</span><span>Elegir de galería</span>
+              </button>
+            </div>
+            <input type="file" id="inputFileCamera" class="upload-input-hidden" accept="image/*" capture="environment" onchange="previewFile(event)">
+            <input type="file" id="inputFileGallery" class="upload-input-hidden" accept="image/*" onchange="previewFile(event)">
           </div>
         </div>
 
