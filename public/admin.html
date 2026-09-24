@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="description" content="Panel de administración - VoleyReservas">
+  <meta name="theme-color" content="#0a0a1a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Admin - VoleyReservas 🏐</title>
+  <link rel="stylesheet" href="/css/admin.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚙️</text></svg>">
+</head>
+<body>
+
+  <!-- Login Screen -->
+  <div class="login-screen" id="loginScreen">
+    <div class="login-card">
+      <div class="login-logo">
+        <span class="icon">🏐</span>
+        <div class="title">VoleyReservas</div>
+        <div class="subtitle">Panel de Administración</div>
+      </div>
+      <form class="login-form" id="loginForm" onsubmit="handleLogin(event)">
+        <div class="form-group">
+          <label class="form-label">Usuario</label>
+          <input type="text" class="form-input" id="loginUser" placeholder="admin" required autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Contraseña</label>
+          <input type="password" class="form-input" id="loginPass" placeholder="••••••••" required autocomplete="current-password">
+        </div>
+        <button type="submit" class="btn-login" id="btnLogin">Iniciar Sesión</button>
+        <div class="login-error" id="loginError">Credenciales inválidas</div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Admin App -->
+  <div class="admin-app" id="adminApp">
+    <!-- Header -->
+    <header class="admin-header">
+      <div class="admin-header-content">
+        <div class="admin-logo">
+          <span class="icon">🏐</span>
+          <span class="text">VoleyReservas</span>
+          <span class="badge">ADMIN</span>
+        </div>
+        <button class="btn-logout" onclick="handleLogout()">Cerrar sesión</button>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="admin-main">
+      <!-- Notification Permission Banner -->
+      <div class="notification-banner" id="notificationBanner" style="display: none;">
+        <div class="banner-text">
+          🔔 <strong>Activa las notificaciones</strong> para recibir alertas cuando lleguen nuevas reservas
+        </div>
+        <button class="btn-enable-notifications" onclick="enableNotifications()">Activar</button>
+      </div>
+
+      <!-- Dashboard Metrics -->
+      <div class="metrics-grid" id="metricsGrid">
+        <div class="metric-card pending" id="metricPending">
+          <div class="metric-label">⏳ Pendientes</div>
+          <div class="metric-value">-</div>
+          <div class="metric-sub">reservas por confirmar</div>
+        </div>
+        <div class="metric-card income" id="metricIncome">
+          <div class="metric-label">💰 Ingresos hoy</div>
+          <div class="metric-value">S/ -</div>
+          <div class="metric-sub">confirmados</div>
+        </div>
+        <div class="metric-card bookings" id="metricBookings">
+          <div class="metric-label">📋 Reservas hoy</div>
+          <div class="metric-value">-</div>
+          <div class="metric-sub">confirmadas</div>
+        </div>
+        <div class="metric-card weekly" id="metricWeekly">
+          <div class="metric-label">📊 Ingresos semana</div>
+          <div class="metric-value">S/ -</div>
+          <div class="metric-sub">últimos 7 días</div>
+        </div>
+      </div>
+
+      <!-- Income Chart -->
+      <div class="chart-section" id="chartSection">
+        <div class="chart-header">
+          <span class="chart-title">📈 Ingresos últimos 7 días</span>
+        </div>
+        <div class="chart-container" id="chartContainer"></div>
+      </div>
+
+      <!-- Tabs -->
+      <div class="tabs" id="tabs">
+        <button class="tab-btn active pending-tab" data-tab="pendientes" onclick="switchTab('pendientes')">
+          🟡 Pendientes <span class="tab-count" id="tabPendingCount">0</span>
+        </button>
+        <button class="tab-btn" data-tab="confirmadas" onclick="switchTab('confirmadas')">
+          🟢 Confirmadas <span class="tab-count" id="tabConfirmedCount">0</span>
+        </button>
+        <button class="tab-btn" data-tab="todas" onclick="switchTab('todas')">
+          📋 Todas
+        </button>
+      </div>
+
+      <!-- Date Filter -->
+      <div class="date-filter">
+        <input type="date" id="dateFilter" onchange="onDateFilterChange()">
+        <button class="btn-today" onclick="filterToday()">Hoy</button>
+      </div>
+
+      <!-- Reservations List -->
+      <div class="reservations-list" id="reservationsList">
+        <div class="empty-state">
+          <div class="empty-icon">📋</div>
+          <div class="empty-text">Cargando reservas...</div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Receipt Modal -->
+  <div class="receipt-modal-overlay" id="receiptModal" onclick="closeReceiptModal()">
+    <div class="receipt-modal" onclick="event.stopPropagation()">
+      <button class="close-btn" onclick="closeReceiptModal()">✕</button>
+      <img id="receiptImage" src="" alt="Comprobante de pago">
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="/js/admin.js"></script>
+</body>
+</html>

@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="description" content="Reserva tu cancha de vóley en segundos. Horarios disponibles en tiempo real, reservas instantáneas.">
+  <meta name="theme-color" content="#0a0a1a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>VoleyReservas - Reserva tu cancha 🏐</title>
+  <link rel="stylesheet" href="/css/styles.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏐</text></svg>">
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="header-content">
+      <div class="logo">
+        <span class="logo-icon">🏐</span>
+        <span class="logo-text">VoleyReservas</span>
+      </div>
+      <div class="header-info">
+        <span class="dot"></span>
+        <span>8am - 11pm</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="main-content" id="mainContent">
+    
+    <!-- Booking View -->
+    <div id="bookingView">
+      <!-- Date Picker -->
+      <section class="section">
+        <h2 class="section-title">
+          <span class="icon">📅</span>
+          Selecciona una fecha
+        </h2>
+        <div class="date-picker-container" id="datePicker"></div>
+      </section>
+
+      <!-- Pricing Info -->
+      <div class="pricing-banner">
+        <div class="pricing-item dia">
+          <div class="label">Horario día</div>
+          <div class="price">S/ 50</div>
+          <div class="hours">8am - 5pm</div>
+        </div>
+        <div class="pricing-divider"></div>
+        <div class="pricing-item noche">
+          <div class="label">Horario noche</div>
+          <div class="price">S/ 60</div>
+          <div class="hours">6pm - 11pm</div>
+        </div>
+      </div>
+
+      <!-- Time Slots -->
+      <section class="section">
+        <h2 class="section-title">
+          <span class="icon">⏰</span>
+          Horarios disponibles
+        </h2>
+        <div id="timeGrid" class="time-grid">
+          <!-- Slots loaded dynamically -->
+        </div>
+      </section>
+    </div>
+
+    <!-- Status Screen (after booking) -->
+    <div id="statusScreen" class="status-screen"></div>
+
+  </main>
+
+  <!-- Selection Summary (fixed bottom bar) -->
+  <div class="selection-summary" id="selectionSummary">
+    <div class="selection-summary-content">
+      <div class="selection-info">
+        <div class="selection-hours" id="selectionHours">0 horas seleccionadas</div>
+        <div class="selection-total">S/ <span id="selectionTotal">0</span></div>
+      </div>
+      <button class="btn-reserve" id="btnReserve" onclick="openBookingModal()">
+        Reservar 🏐
+      </button>
+    </div>
+  </div>
+
+  <!-- Booking Modal -->
+  <div class="modal-overlay" id="bookingModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 class="modal-title">📋 Completar Reserva</h3>
+        <button class="modal-close" onclick="closeBookingModal()">✕</button>
+      </div>
+
+      <!-- Booking Summary -->
+      <div class="booking-summary" id="bookingSummary"></div>
+
+      <!-- Booking Form -->
+      <form id="bookingForm" onsubmit="submitBooking(event)">
+        <div class="form-group">
+          <label class="form-label">Tu nombre</label>
+          <input type="text" class="form-input" id="inputName" placeholder="Ej: Juan Pérez" required autocomplete="name">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Tu teléfono (WhatsApp)</label>
+          <input type="tel" class="form-input" id="inputPhone" placeholder="Ej: 987654321" required pattern="[0-9]{9}" autocomplete="tel">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Método de pago</label>
+          <div class="payment-methods" id="paymentMethods">
+            <div class="payment-method active" data-method="yape" onclick="selectPayment('yape')">
+              <span class="method-icon">💜</span>
+              <span class="method-name">Yape</span>
+            </div>
+            <div class="payment-method" data-method="plin" onclick="selectPayment('plin')">
+              <span class="method-icon">💚</span>
+              <span class="method-name">Plin</span>
+            </div>
+            <div class="payment-method" data-method="transferencia" onclick="selectPayment('transferencia')">
+              <span class="method-icon">🏦</span>
+              <span class="method-name">Transferencia</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Comprobante de pago</label>
+          <div class="upload-area" id="uploadArea">
+            <span class="upload-icon">📸</span>
+            <span class="upload-text">Toca para subir foto del comprobante</span>
+            <span class="upload-hint">JPG, PNG o captura de pantalla</span>
+            <input type="file" id="inputFile" accept="image/*" capture="environment" onchange="previewFile(event)" required>
+          </div>
+        </div>
+
+        <button type="submit" class="btn-submit" id="btnSubmit">
+          <span>Enviar Reserva</span>
+          <span>✉️</span>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>
