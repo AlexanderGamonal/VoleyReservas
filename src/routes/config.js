@@ -6,7 +6,9 @@ const { authenticateToken } = require('../middleware/auth');
 const CAMPOS_CONFIG = [
   'yape_numero', 'yape_titular',
   'plin_numero', 'plin_titular',
-  'banco_nombre', 'banco_numero_cuenta', 'banco_cci', 'banco_titular'
+  'banco_nombre', 'banco_numero_cuenta', 'banco_cci', 'banco_titular',
+  'hora_inicio_atencion', 'hora_fin_atencion', 'dias_max_reserva',
+  'precio_dia', 'precio_noche', 'hora_inicio_noche'
 ];
 
 /**

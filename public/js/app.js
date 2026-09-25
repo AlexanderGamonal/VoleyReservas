@@ -21,9 +21,9 @@ const API_BASE = '';
 // ==========================================
 // Initialization
 // ==========================================
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadPaymentConfig();
   initDatePicker();
-  loadPaymentConfig();
   registerServiceWorker();
   initInstallBanner();
 });
@@ -153,8 +153,9 @@ function initDatePicker() {
   const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 
   const today = new Date();
+  const maxDays = state.paymentConfig.dias_max_reserva || 14;
   
-  for (let i = 0; i < 14; i++) {
+  for (let i = 0; i < maxDays; i++) {
     const date = new Date(today);
     date.setDate(today.getDate() + i);
     

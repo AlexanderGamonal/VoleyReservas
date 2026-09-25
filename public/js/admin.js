@@ -294,6 +294,19 @@ async function loadDashboard() {
     document.getElementById('metricWeekly').querySelector('.metric-value').textContent = `S/ ${data.semanal.total}`;
     document.getElementById('metricWeekly').querySelector('.metric-sub').textContent = `${data.semanal.cantidad} reserva(s)`;
 
+    const metricMonthly = document.getElementById('metricMonthly');
+    if (metricMonthly) {
+      metricMonthly.querySelector('.metric-value').textContent = `S/ ${data.mensual.total}`;
+      metricMonthly.querySelector('.metric-sub').textContent = `${data.mensual.cantidad} reserva(s) este mes`;
+      if (data.mensual_metodos) {
+        metricMonthly.querySelector('#metricMonthlyBreakdown').innerHTML = `
+          <span>💜 Yape: S/ ${data.mensual_metodos.yape}</span>
+          <span>💚 Plin: S/ ${data.mensual_metodos.plin}</span>
+          <span>🏦 Bco: S/ ${data.mensual_metodos.transferencia}</span>
+        `;
+      }
+    }
+
     // Update pending tab count (siempre global, sin filtro de fecha)
     document.getElementById('tabPendingCount').textContent = data.pendientes;
 
@@ -303,25 +316,30 @@ async function loadDashboard() {
     console.error('Error loading dashboard:', error);
   }
 
-  loadConfirmedCount();
+  loadTabCounts();
 }
 
 /**
- * El badge de "Confirmadas" se calcula aparte de la lista que se muestra
- * (que solo trae los datos de la pestaña activa) para que siempre refleje
- * el total real del día filtrado, sin importar qué pestaña esté abierta.
+ * Los badges de "Confirmadas" y "Rechazadas" se calculan aparte de la lista que se muestra
+ * para que siempre reflejen el total real del día filtrado, sin importar qué pestaña esté abierta.
  */
-async function loadConfirmedCount() {
+async function loadTabCounts() {
   try {
-    const response = await fetch(
-      `${API_BASE}/api/admin/reservas/count?estado=confirmada&fecha=${state.filterDate}`,
-      { headers: { 'Authorization': `Bearer ${state.token}` } }
-    );
-    if (!response.ok) return;
-    const { count } = await response.json();
-    document.getElementById('tabConfirmedCount').textContent = count;
+    const [confRes, rejRes] = await Promise.all([
+      fetch(`${API_BASE}/api/admin/reservas/count?estado=confirmada&fecha=${state.filterDate}`, { headers: { 'Authorization': `Bearer ${state.token}` } }),
+      fetch(`${API_BASE}/api/admin/reservas/count?estado=rechazada,expirada,cancelada&fecha=${state.filterDate}`, { headers: { 'Authorization': `Bearer ${state.token}` } })
+    ]);
+    
+    if (confRes.ok) {
+      const { count } = await confRes.json();
+      document.getElementById('tabConfirmedCount').textContent = count;
+    }
+    if (rejRes.ok) {
+      const { count } = await rejRes.json();
+      document.getElementById('tabHistoryCount').textContent = count;
+    }
   } catch (error) {
-    console.error('Error contando confirmadas:', error);
+    console.error('Error contando confirmadas/rechazadas:', error);
   }
 }
 
@@ -336,12 +354,17 @@ function renderChart(data) {
 
   const maxValue = Math.max(...data.map(d => d.total), 1);
 
-  // Fill in missing days for the last 7 days
+  // Fill in missing days for Monday-Sunday of the current week
   const today = new Date();
+  const dayOfWeek = today.getDay(); // 0 is Sunday, 1 is Monday...
+  const diffToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  const startOfWeek = new Date(today);
+  startOfWeek.setDate(today.getDate() - diffToMonday);
+
   const chartData = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(today.getDate() - i);
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(startOfWeek);
+    d.setDate(startOfWeek.getDate() + i);
     const dateStr = d.toLocaleDateString('en-CA');
     const existing = data.find(x => x.fecha === dateStr);
     chartData.push({
@@ -373,19 +396,18 @@ async function loadReservations() {
   try {
     const params = new URLSearchParams();
 
-    if (state.currentTab !== 'todas') {
-      const estadoMap = {
-        'pendientes': 'pendiente',
-        'confirmadas': 'confirmada'
-      };
-      if (estadoMap[state.currentTab]) {
-        params.set('estado', estadoMap[state.currentTab]);
-      }
+    const estadoMap = {
+      'pendientes': 'pendiente',
+      'confirmadas': 'confirmada',
+      'historial': 'rechazada,expirada,cancelada'
+    };
+    if (estadoMap[state.currentTab]) {
+      params.set('estado', estadoMap[state.currentTab]);
     }
 
     // Los pendientes requieren acción inmediata, así que se muestran siempre
     // sin importar la fecha seleccionada; el filtro de fecha solo aplica a
-    // confirmadas y "todas" (ver también dateFilterSection en switchTab).
+    // confirmadas y rechazadas (ver también dateFilterSection en switchTab).
     if (state.filterDate && state.currentTab !== 'pendientes') {
       params.set('fecha', state.filterDate);
     }
@@ -422,11 +444,10 @@ function renderReservations() {
   const reservations = state.reservations;
 
   if (!reservations || reservations.length === 0) {
-    const tabName = state.currentTab === 'todas' ? '' : state.currentTab;
     list.innerHTML = `
       <div class="empty-state">
         <div class="empty-icon">📋</div>
-        <div class="empty-text">No hay reservas ${tabName} para esta fecha</div>
+        <div class="empty-text">No hay reservas ${state.currentTab} para esta fecha</div>
       </div>
     `;
     return;
@@ -560,7 +581,7 @@ function getStatusLabel(estado) {
 // Reservation Actions
 // ==========================================
 async function confirmReservation(id) {
-  if (!confirm('¿Confirmar esta reserva?')) return;
+  if (!(await showConfirmDialog('Confirmar reserva', '¿Estás seguro de que deseas confirmar esta reserva?'))) return;
 
   try {
     const response = await fetch(`${API_BASE}/api/admin/reservas/${id}/confirmar`, {
@@ -598,7 +619,7 @@ function redirectToWhatsapp(url) {
 }
 
 async function rejectReservation(id) {
-  if (!confirm('¿Rechazar esta reserva?')) return;
+  if (!(await showConfirmDialog('Rechazar reserva', '¿Estás seguro de que deseas rechazar esta reserva?'))) return;
 
   try {
     const response = await fetch(`${API_BASE}/api/admin/reservas/${id}/rechazar`, {
@@ -630,7 +651,7 @@ function dismissWhatsapp(id) {
 }
 
 async function cancelReservation(id) {
-  if (!confirm('¿Cancelar esta reserva confirmada? El horario se liberará.')) return;
+  if (!(await showConfirmDialog('Cancelar reserva', '¿Cancelar esta reserva confirmada? El horario se liberará.'))) return;
 
   try {
     const response = await fetch(`${API_BASE}/api/admin/reservas/${id}/cancelar`, {
@@ -656,8 +677,16 @@ async function cancelReservation(id) {
 async function viewReceipt(id) {
   const modal = document.getElementById('receiptModal');
   const img = document.getElementById('receiptImage');
+  const loading = document.getElementById('receiptLoading');
 
-  img.src = '';
+  // Reset image state properly to avoid premature onerror triggers
+  img.onload = null;
+  img.onerror = null;
+  img.removeAttribute('src');
+  img.style.opacity = '0';
+  
+  loading.innerHTML = '<div class="spinner"></div><span style="margin-top: 10px;">Cargando...</span>';
+  loading.style.display = 'flex';
   modal.classList.add('active');
 
   try {
@@ -668,10 +697,21 @@ async function viewReceipt(id) {
     if (!response.ok) throw new Error('Error al cargar comprobante');
 
     const blob = await response.blob();
+    
+    img.onload = () => {
+      loading.style.display = 'none';
+      img.style.opacity = '1';
+    };
+    
+    img.onerror = () => {
+      loading.innerHTML = '<span>❌ Error al visualizar la imagen (Formato no soportado)</span>';
+      img.style.opacity = '0';
+    };
+    
     img.src = URL.createObjectURL(blob);
   } catch (error) {
+    loading.innerHTML = '<span>❌ No se encontró el comprobante</span>';
     showToast('Error al cargar el comprobante', 'error');
-    modal.classList.remove('active');
   }
 }
 
@@ -698,7 +738,12 @@ function switchTab(tab) {
 
   if (isConfig) {
     loadConfigPago();
+    setTimeout(() => {
+      document.getElementById('configPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
   } else {
+    // Clear list to prevent showing stale items while loading
+    document.getElementById('reservationsList').innerHTML = '<div class="empty-state"><div class="empty-text">Cargando...</div></div>';
     loadReservations();
   }
 }
@@ -729,6 +774,13 @@ async function loadConfigPago() {
     document.getElementById('cfgBancoNumeroCuenta').value = cfg.banco_numero_cuenta || '';
     document.getElementById('cfgBancoCci').value = cfg.banco_cci || '';
     document.getElementById('cfgBancoTitular').value = cfg.banco_titular || '';
+    
+    document.getElementById('cfgHoraInicio').value = cfg.hora_inicio_atencion ?? 8;
+    document.getElementById('cfgHoraFin').value = cfg.hora_fin_atencion ?? 23;
+    document.getElementById('cfgDiasMax').value = cfg.dias_max_reserva ?? 14;
+    document.getElementById('cfgPrecioDia').value = cfg.precio_dia ?? 50;
+    document.getElementById('cfgPrecioNoche').value = cfg.precio_noche ?? 60;
+    document.getElementById('cfgHoraNoche').value = cfg.hora_inicio_noche ?? 18;
   } catch (error) {
     console.error('Error cargando datos de pago:', error);
     showToast('Error al cargar los datos de pago', 'error');
@@ -750,7 +802,14 @@ async function saveConfigPago(event) {
     banco_nombre: document.getElementById('cfgBancoNombre').value.trim(),
     banco_numero_cuenta: document.getElementById('cfgBancoNumeroCuenta').value.trim(),
     banco_cci: document.getElementById('cfgBancoCci').value.trim(),
-    banco_titular: document.getElementById('cfgBancoTitular').value.trim()
+    banco_titular: document.getElementById('cfgBancoTitular').value.trim(),
+    
+    hora_inicio_atencion: parseInt(document.getElementById('cfgHoraInicio').value) || 8,
+    hora_fin_atencion: parseInt(document.getElementById('cfgHoraFin').value) || 23,
+    dias_max_reserva: parseInt(document.getElementById('cfgDiasMax').value) || 14,
+    precio_dia: parseFloat(document.getElementById('cfgPrecioDia').value) || 50,
+    precio_noche: parseFloat(document.getElementById('cfgPrecioNoche').value) || 60,
+    hora_inicio_noche: parseInt(document.getElementById('cfgHoraNoche').value) || 18
   };
 
   try {
@@ -767,26 +826,27 @@ async function saveConfigPago(event) {
 
     if (!response.ok) throw new Error(data.error || 'Error al guardar');
 
-    showToast('✅ Datos de pago guardados', 'success');
+    showToast('✅ Configuración guardada', 'success');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   } catch (error) {
     showToast(error.message, 'error');
   } finally {
     btn.disabled = false;
-    btn.textContent = 'Guardar datos de pago';
+    btn.textContent = 'Guardar Configuración';
   }
 }
 
 function onDateFilterChange() {
   state.filterDate = document.getElementById('dateFilter').value;
   loadReservations();
-  loadConfirmedCount();
+  loadTabCounts();
 }
 
 function filterToday() {
   state.filterDate = new Date().toLocaleDateString('en-CA');
   document.getElementById('dateFilter').value = state.filterDate;
   loadReservations();
-  loadConfirmedCount();
+  loadTabCounts();
 }
 
 // ==========================================
@@ -863,6 +923,79 @@ function showToast(message, type = 'info') {
 }
 
 // ==========================================
+// Consultas Personalizadas
+// ==========================================
+window.exportarExcel = function() {
+  const desde = document.getElementById('rangoDesde').value;
+  const hasta = document.getElementById('rangoHasta').value;
+  if (!desde || !hasta) {
+    showToast('Selecciona un rango de fechas para exportar', 'error');
+    return;
+  }
+  window.open(`${API_BASE}/api/admin/reservas/exportar?desde=${desde}&hasta=${hasta}&token=${state.token}`, '_blank');
+};
+
+window.consultarMes = function() {
+  const mesInput = document.getElementById('rangoMes').value;
+  if (!mesInput) return;
+  const [y, m] = mesInput.split('-');
+  const date = new Date(y, m - 1, 1);
+  const lastDay = new Date(y, m, 0);
+  document.getElementById('rangoDesde').value = `${y}-${m}-01`;
+  document.getElementById('rangoHasta').value = `${y}-${m}-${String(lastDay.getDate()).padStart(2, '0')}`;
+  window.consultarRango();
+};
+
+window.consultarRango = async function() {
+  const desde = document.getElementById('rangoDesde').value;
+  const hasta = document.getElementById('rangoHasta').value;
+  const resultDiv = document.getElementById('rangoResult');
+  
+  if (!desde || !hasta) {
+    resultDiv.innerHTML = '<p class="text-danger">Por favor selecciona un rango de fechas</p>';
+    return;
+  }
+  
+  if (desde > hasta) {
+    resultDiv.innerHTML = '<p class="text-danger">La fecha "desde" no puede ser mayor que "hasta"</p>';
+    return;
+  }
+  
+  resultDiv.innerHTML = '<div class="spinner"></div> Buscando...';
+  
+  try {
+    const response = await fetch(`${API_BASE}/api/admin/ingresos/rango?desde=${desde}&hasta=${hasta}`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    
+    if (!response.ok) throw new Error('Error en la consulta');
+    const data = await response.json();
+    
+    let metodosHtml = '';
+    if (data.metodos) {
+      metodosHtml = `
+        <div style="display:flex; justify-content:space-between; margin-top:10px; font-size:0.9rem; border-top:1px solid var(--border-glass); padding-top:10px;">
+          <span>💜 Yape: S/ ${data.metodos.yape}</span>
+          <span>💚 Plin: S/ ${data.metodos.plin}</span>
+          <span>🏦 Banco: S/ ${data.metodos.transferencia}</span>
+        </div>
+      `;
+    }
+    
+    resultDiv.innerHTML = `
+      <div style="background:var(--card-bg); padding:var(--space-md); border-radius:var(--radius-md); border:1px solid var(--border-glass);">
+        <h4 style="margin:0 0 10px 0; color:var(--text-secondary);">Resultados del ${desde} al ${hasta}</h4>
+        <div style="font-size:1.5rem; font-weight:bold; color:var(--accent-green);">S/ ${data.total}</div>
+        <div style="color:var(--text-secondary); font-size:0.9rem; margin-bottom:10px;">${data.cantidad} reserva(s) confirmada(s)</div>
+        ${metodosHtml}
+      </div>
+    `;
+  } catch (error) {
+    resultDiv.innerHTML = '<p class="text-danger">Error al obtener los datos</p>';
+  }
+};
+
+// ==========================================
 // Countdown Timer (client-side)
 // ==========================================
 setInterval(() => {
@@ -913,4 +1046,76 @@ function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
+}
+
+// ==========================================
+// Settings Dropdown
+// ==========================================
+function toggleSettings(event) {
+  if (event) event.stopPropagation();
+  const menu = document.getElementById('settingsMenu');
+  if (menu) menu.classList.toggle('active');
+}
+
+document.addEventListener('click', (event) => {
+  const menu = document.getElementById('settingsMenu');
+  const btn = document.getElementById('btnSettings');
+  if (menu && menu.classList.contains('active') && !menu.contains(event.target) && event.target !== btn) {
+    menu.classList.remove('active');
+  }
+});
+
+// ==========================================
+// Custom Confirm Dialog
+// ==========================================
+function showConfirmDialog(title, message) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('confirmModal');
+    document.getElementById('confirmTitle').textContent = title;
+    document.getElementById('confirmMessage').textContent = message;
+    
+    // Add red theme for reject/cancel
+    const btnYes = document.getElementById('btnConfirmYes');
+    if (title.toLowerCase().includes('rechazar') || title.toLowerCase().includes('cancelar')) {
+      btnYes.style.background = 'var(--accent-red)';
+    } else {
+      btnYes.style.background = 'var(--accent-blue)';
+    }
+
+    modal.classList.add('active');
+
+    const handleYes = () => {
+      cleanup();
+      resolve(true);
+    };
+    
+    const handleNo = () => {
+      cleanup();
+      resolve(false);
+    };
+
+    const cleanup = () => {
+      document.getElementById('btnConfirmYes').removeEventListener('click', handleYes);
+      document.getElementById('btnConfirmNo').removeEventListener('click', handleNo);
+      modal.classList.remove('active');
+    };
+
+    document.getElementById('btnConfirmYes').addEventListener('click', handleYes);
+    document.getElementById('btnConfirmNo').addEventListener('click', handleNo);
+  });
+}
+
+// ==========================================
+// Rango Section Collapse
+// ==========================================
+function toggleRangoCollapse() {
+  const content = document.getElementById('rangoContent');
+  const icon = document.getElementById('rangoIcon');
+  if (content.style.display === 'none') {
+    content.style.display = 'block';
+    icon.style.transform = 'rotate(180deg)';
+  } else {
+    content.style.display = 'none';
+    icon.style.transform = 'rotate(0deg)';
+  }
 }

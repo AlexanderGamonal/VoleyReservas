@@ -1,47 +1,61 @@
-/**
- * Pricing utility for VoleyReservas
- * 
- * Tarifa Día (8am - 5pm): S/ 50 por hora
- * Tarifa Noche (6pm - 11pm): S/ 60 por hora
- */
+const { supabase } = require('../database');
 
-const TARIFA_DIA = 50;   // S/ 50 por hora (8:00 - 17:00)
-const TARIFA_NOCHE = 60;  // S/ 60 por hora (18:00 - 23:00)
-const HORA_CAMBIO = 18;   // A partir de las 18:00 cambia la tarifa
+/**
+ * Obtiene la configuración desde la base de datos
+ */
+async function getConfig() {
+  const { data, error } = await supabase
+    .from('voley_config')
+    .select('hora_inicio_atencion, hora_fin_atencion, dias_max_reserva, precio_dia, precio_noche, hora_inicio_noche')
+    .eq('id', 1)
+    .maybeSingle();
+
+  if (error || !data) {
+    return {
+      horaApertura: 8,
+      horaCierre: 23,
+      diasMax: 14,
+      precioDia: 50,
+      precioNoche: 60,
+      horaCambio: 18
+    };
+  }
+
+  return {
+    horaApertura: data.hora_inicio_atencion ?? 8,
+    horaCierre: data.hora_fin_atencion ?? 23,
+    diasMax: data.dias_max_reserva ?? 14,
+    precioDia: data.precio_dia ?? 50,
+    precioNoche: data.precio_noche ?? 60,
+    horaCambio: data.hora_inicio_noche ?? 18
+  };
+}
 
 /**
  * Calcula el precio de una hora específica
- * @param {number} hora - Hora (8-22, representa el inicio del bloque)
- * @returns {number} Precio de esa hora
  */
-function precioHora(hora) {
-  return hora >= HORA_CAMBIO ? TARIFA_NOCHE : TARIFA_DIA;
+function precioHora(hora, config) {
+  return hora >= config.horaCambio ? config.precioNoche : config.precioDia;
 }
 
 /**
  * Calcula el precio total de un bloque de horas
- * @param {number} horaInicio - Hora de inicio (8-22)
- * @param {number} horaFin - Hora de fin (9-23)
- * @returns {number} Precio total
  */
-function calcularPrecioTotal(horaInicio, horaFin) {
+function calcularPrecioTotal(horaInicio, horaFin, config) {
   let total = 0;
   for (let h = horaInicio; h < horaFin; h++) {
-    total += precioHora(h);
+    total += precioHora(h, config);
   }
   return total;
 }
 
 /**
  * Obtiene el desglose de precios por hora
- * @param {number} horaInicio 
- * @param {number} horaFin 
- * @returns {Array<{hora: number, precio: number}>}
  */
-function desglosePrecios(horaInicio, horaFin) {
+function desglosePrecios(horaInicio, horaFin, config) {
   const desglose = [];
   for (let h = horaInicio; h < horaFin; h++) {
-    desglose.push({ hora: h, precio: precioHora(h) });
+    desglose.push({ hora: h, precio: precioHora(h, config) });
   }
   return desglose;
 }
@@ -49,20 +63,12 @@ function desglosePrecios(horaInicio, horaFin) {
 /**
  * Retorna la información de precios para el frontend
  */
-function getInfoPrecios() {
-  return {
-    tarifaDia: TARIFA_DIA,
-    tarifaNoche: TARIFA_NOCHE,
-    horaCambio: HORA_CAMBIO,
-    horaApertura: 8,
-    horaCierre: 23
-  };
+async function getInfoPrecios() {
+  return await getConfig();
 }
 
 module.exports = {
-  TARIFA_DIA,
-  TARIFA_NOCHE,
-  HORA_CAMBIO,
+  getConfig,
   precioHora,
   calcularPrecioTotal,
   desglosePrecios,

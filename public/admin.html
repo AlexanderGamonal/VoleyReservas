@@ -50,7 +50,14 @@
           <span class="text">VoleyReservas</span>
           <span class="badge">ADMIN</span>
         </div>
-        <button class="btn-logout" onclick="handleLogout()">Cerrar sesión</button>
+        <div class="settings-dropdown">
+          <button class="btn-settings" id="btnSettings" onclick="toggleSettings(event)">⚙️ Ajustes</button>
+          <div class="settings-menu" id="settingsMenu">
+            <button class="settings-item" onclick="switchTab('config'); toggleSettings(event)">⚙️ Reglas de operación</button>
+            <div class="settings-divider"></div>
+            <button class="settings-item text-danger" onclick="handleLogout()">🚪 Cerrar sesión</button>
+          </div>
+        </div>
       </div>
     </header>
 
@@ -88,42 +95,58 @@
           <div class="metric-sub">confirmadas</div>
         </div>
         <div class="metric-card weekly" id="metricWeekly">
-          <div class="metric-label">📊 Ingresos semana</div>
+          <div class="metric-label">📊 Ingreso semanal</div>
           <div class="metric-value">S/ -</div>
-          <div class="metric-sub">últimos 7 días</div>
+          <div class="metric-sub">esta semana</div>
+        </div>
+        <div class="metric-card monthly" id="metricMonthly" style="grid-column: span 2; display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <div class="metric-label">🗓️ Ingreso mensual</div>
+            <div class="metric-value">S/ -</div>
+            <div class="metric-sub">este mes</div>
+          </div>
+          <div id="metricMonthlyBreakdown" style="display:flex; flex-direction:column; gap:6px; text-align:right; font-size:0.95rem; color:var(--text-secondary);">
+            <span>💜 Yape: S/ 0</span>
+            <span>💚 Plin: S/ 0</span>
+            <span>🏦 Bco: S/ 0</span>
+          </div>
         </div>
       </div>
 
       <!-- Income Chart -->
       <div class="chart-section" id="chartSection">
         <div class="chart-header">
-          <span class="chart-title">📈 Ingresos últimos 7 días</span>
+          <span class="chart-title">📈 Ingresos de la semana (Lun - Dom)</span>
         </div>
         <div class="chart-container" id="chartContainer"></div>
       </div>
 
       <!-- Consultar otro período -->
       <div class="chart-section" id="rangoSection">
-        <div class="chart-header">
+        <div class="chart-header" onclick="toggleRangoCollapse()" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center; margin-bottom: 0;">
           <span class="chart-title">🗓️ Consultar otro período</span>
+          <span class="collapse-icon" id="rangoIcon">▼</span>
         </div>
-        <div class="rango-controls">
-          <div class="rango-field">
-            <label class="form-label">Mes</label>
-            <input type="month" id="rangoMes" onchange="consultarMes()">
+        <div id="rangoContent" style="display: none; padding-top: var(--space-md); margin-top: var(--space-md); border-top: 1px solid var(--border-glass);">
+          <div class="rango-controls">
+            <div class="rango-field">
+              <label class="form-label">Mes</label>
+              <input type="month" id="rangoMes" onchange="consultarMes()">
+            </div>
+            <span class="rango-divider">o</span>
+            <div class="rango-field">
+              <label class="form-label">Desde</label>
+              <input type="date" id="rangoDesde">
+            </div>
+            <div class="rango-field">
+              <label class="form-label">Hasta</label>
+              <input type="date" id="rangoHasta">
+            </div>
+            <button class="btn-today" onclick="consultarRango()">Consultar</button>
+            <button class="btn-today" onclick="exportarExcel()" style="background: transparent; border: 1px solid var(--accent-green); color: var(--accent-green);">📊 Exportar a Excel (.xlsx)</button>
           </div>
-          <span class="rango-divider">o</span>
-          <div class="rango-field">
-            <label class="form-label">Desde</label>
-            <input type="date" id="rangoDesde">
-          </div>
-          <div class="rango-field">
-            <label class="form-label">Hasta</label>
-            <input type="date" id="rangoHasta">
-          </div>
-          <button class="btn-today" onclick="consultarRango()">Consultar</button>
+          <div class="rango-result" id="rangoResult"></div>
         </div>
-        <div class="rango-result" id="rangoResult"></div>
       </div>
 
       <!-- Tabs -->
@@ -134,11 +157,8 @@
         <button class="tab-btn" data-tab="confirmadas" onclick="switchTab('confirmadas')">
           🟢 Confirmadas <span class="tab-count" id="tabConfirmedCount">0</span>
         </button>
-        <button class="tab-btn" data-tab="todas" onclick="switchTab('todas')">
-          📋 Todas
-        </button>
-        <button class="tab-btn" data-tab="config" onclick="switchTab('config')">
-          ⚙️ Datos de pago
+        <button class="tab-btn rejected-tab" data-tab="historial" onclick="switchTab('historial')">
+          📁 Historial <span class="tab-count" id="tabHistoryCount">0</span>
         </button>
       </div>
 
@@ -159,6 +179,36 @@
       <!-- Payment Config Panel -->
       <div class="config-panel" id="configPanel" style="display: none;">
         <form id="configForm" onsubmit="saveConfigPago(event)">
+          <div class="config-section">
+            <h3 class="config-section-title">⚙️ Reglas de Operación</h3>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-md);">
+              <div class="form-group">
+                <label class="form-label">Apertura (Hora 0-23)</label>
+                <input type="number" class="form-input" id="cfgHoraInicio" min="0" max="23" placeholder="8">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Cierre (Hora 0-23)</label>
+                <input type="number" class="form-input" id="cfgHoraFin" min="0" max="23" placeholder="23">
+              </div>
+              <div class="form-group" style="grid-column: span 2;">
+                <label class="form-label">Límite de días futuros para reservar</label>
+                <input type="number" class="form-input" id="cfgDiasMax" min="1" placeholder="14">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Precio de Día (S/)</label>
+                <input type="number" class="form-input" id="cfgPrecioDia" min="0" placeholder="50">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Precio de Noche (S/)</label>
+                <input type="number" class="form-input" id="cfgPrecioNoche" min="0" placeholder="60">
+              </div>
+              <div class="form-group" style="grid-column: span 2;">
+                <label class="form-label">Hora inicio tarifa noche (Ej: 18)</label>
+                <input type="number" class="form-input" id="cfgHoraNoche" min="0" max="23" placeholder="18">
+              </div>
+            </div>
+          </div>
+
           <div class="config-section">
             <h3 class="config-section-title">💜 Yape</h3>
             <div class="form-group">
@@ -203,7 +253,8 @@
             </div>
           </div>
 
-          <button type="submit" class="btn-save-config" id="btnSaveConfig">Guardar datos de pago</button>
+
+          <button type="submit" class="btn-save-config" id="btnSaveConfig">Guardar Configuración</button>
         </form>
       </div>
     </main>
@@ -213,7 +264,23 @@
   <div class="receipt-modal-overlay" id="receiptModal" onclick="closeReceiptModal()">
     <div class="receipt-modal" onclick="event.stopPropagation()">
       <button class="close-btn" onclick="closeReceiptModal()">✕</button>
-      <img id="receiptImage" src="" alt="Comprobante de pago">
+      <div id="receiptLoading" class="receipt-loading" style="display: none;">
+        <div class="spinner"></div>
+        <span>Cargando...</span>
+      </div>
+      <img id="receiptImage" src="" alt="Comprobante de pago" style="opacity: 0; transition: opacity 0.3s;">
+    </div>
+  </div>
+
+  <!-- Confirm Modal -->
+  <div class="custom-modal-overlay" id="confirmModal">
+    <div class="custom-modal-card">
+      <h3 class="custom-modal-title" id="confirmTitle">Confirmar</h3>
+      <p class="custom-modal-message" id="confirmMessage">¿Estás seguro?</p>
+      <div class="custom-modal-actions">
+        <button class="btn-modal-cancel" id="btnConfirmNo">Cancelar</button>
+        <button class="btn-modal-confirm" id="btnConfirmYes">Aceptar</button>
+      </div>
     </div>
   </div>
 

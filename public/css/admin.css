@@ -561,6 +561,11 @@ body::before {
   color: var(--accent-yellow);
 }
 
+.tab-btn.rejected-tab .tab-count {
+  background: rgba(239, 68, 68, 0.2);
+  color: var(--accent-red);
+}
+
 /* ==========================================
    Date Filter
    ========================================== */
@@ -1163,4 +1168,298 @@ body::before {
   .admin-main {
     padding: var(--space-md);
   }
+
+  .tabs {
+    gap: var(--space-xs);
+  }
+  
+  .tab-btn {
+    flex: 1;
+    padding: var(--space-sm) var(--space-xs);
+    font-size: 0.75rem;
+    justify-content: center;
+  }
+}
+
+/* ==========================================
+   Settings Dropdown
+   ========================================== */
+.settings-dropdown {
+  position: relative;
+}
+
+.btn-settings {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fff;
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-full);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.btn-settings:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.settings-menu {
+  position: absolute;
+  top: calc(100% + var(--space-sm));
+  right: 0;
+  background: #111128; /* Opaque background */
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-md);
+  padding: var(--space-xs);
+  min-width: 200px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.8);
+  z-index: 9999;
+  display: none;
+  flex-direction: column;
+}
+
+.settings-menu.active {
+  display: flex;
+}
+
+.settings-item {
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  padding: var(--space-sm) var(--space-md);
+  text-align: left;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.9rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.settings-item:hover {
+  background: var(--bg-glass);
+}
+
+.settings-item.text-danger {
+  color: #ef4444;
+}
+
+.settings-divider {
+  height: 1px;
+  background: var(--border-glass);
+  margin: var(--space-xs) 0;
+}
+
+/* ==========================================
+   Custom Confirm Modal
+   ========================================== */
+.custom-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(5px);
+  z-index: 10000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-normal);
+}
+
+.custom-modal-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.custom-modal-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-lg);
+  padding: var(--space-xl);
+  width: 90%;
+  max-width: 400px;
+  box-shadow: var(--shadow-lg);
+  transform: translateY(20px);
+  transition: transform var(--transition-normal);
+}
+
+.custom-modal-overlay.active .custom-modal-card {
+  transform: translateY(0);
+}
+
+.custom-modal-title {
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: var(--space-sm);
+  color: var(--text-primary);
+}
+
+.custom-modal-message {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-xl);
+  line-height: 1.5;
+}
+
+.custom-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+}
+
+.btn-modal-cancel {
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: var(--text-primary);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-md);
+  font-family: 'Inter', sans-serif;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.btn-modal-cancel:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.btn-modal-confirm {
+  background: var(--accent-blue);
+  border: none;
+  color: #fff;
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-md);
+  font-family: 'Inter', sans-serif;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.btn-modal-confirm:hover {
+  background: #2563eb;
+}
+
+/* ==========================================
+   Receipt Modal
+   ========================================== */
+.receipt-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 10000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-normal);
+}
+
+.receipt-modal-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.receipt-modal {
+  position: relative;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-lg);
+  padding: var(--space-md);
+  max-width: 90%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-xl);
+  transform: scale(0.95);
+  transition: transform var(--transition-normal);
+  min-width: 250px;
+  min-height: 200px;
+}
+
+.receipt-modal-overlay.active .receipt-modal {
+  transform: scale(1);
+}
+
+.receipt-modal .close-btn {
+  position: absolute;
+  top: -15px;
+  right: -15px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--bg-card);
+  border: 1px solid var(--border-glass);
+  color: white;
+  font-size: 1.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 2;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+  transition: background var(--transition-fast);
+}
+
+.receipt-modal .close-btn:hover {
+  background: var(--accent-red);
+}
+
+.receipt-modal img {
+  max-width: 100%;
+  max-height: calc(90vh - 2 * var(--space-md));
+  border-radius: var(--radius-sm);
+  object-fit: contain;
+}
+
+/* Loading state for receipt */
+.receipt-loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--text-secondary);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-sm);
+  pointer-events: none;
+}
+
+.receipt-loading .spinner {
+  width: 30px;
+  height: 30px;
+  border: 3px solid var(--border-glass);
+  border-top-color: var(--accent-blue);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ==========================================
+   Collapse Icon
+   ========================================== */
+.collapse-icon {
+  display: inline-block;
+  transition: transform 0.3s ease;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
 }

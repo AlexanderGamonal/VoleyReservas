@@ -1,10 +1,11 @@
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
+const ExcelJS = require('exceljs');
 const router = express.Router();
 const { supabase, COMPROBANTES_BUCKET } = require('../database');
 const { authenticateToken } = require('../middleware/auth');
-const { calcularPrecioTotal, getInfoPrecios, precioHora } = require('../utils/pricing');
+const { getConfig, precioHora, calcularPrecioTotal, desglosePrecios, getInfoPrecios } = require('../utils/pricing');
 const { notifyNewReservation } = require('../utils/notifications');
 const { getTimeRemaining, expireOldReservations, EXPIRATION_MINUTES } = require('../utils/expiration');
 const { todayStr, currentHour, maxDateStr } = require('../utils/datetime');
@@ -36,19 +37,24 @@ const upload = multer({
  * GET /api/precios
  * Get pricing information
  */
-router.get('/precios', (req, res) => {
-  const info = getInfoPrecios();
-  const horas = [];
-  for (let h = info.horaApertura; h < info.horaCierre; h++) {
-    horas.push({
-      hora: h,
-      horaStr: `${h.toString().padStart(2, '0')}:00`,
-      horaFinStr: `${(h + 1).toString().padStart(2, '0')}:00`,
-      precio: precioHora(h),
-      tipo: h >= info.horaCambio ? 'noche' : 'dia'
-    });
+router.get('/precios', async (req, res) => {
+  try {
+    const info = await getConfig();
+    const horas = [];
+    for (let h = info.horaApertura; h < info.horaCierre; h++) {
+      horas.push({
+        hora: h,
+        horaStr: `${h.toString().padStart(2, '0')}:00`,
+        horaFinStr: `${(h + 1).toString().padStart(2, '0')}:00`,
+        precio: precioHora(h, info),
+        tipo: h >= info.horaCambio ? 'noche' : 'dia'
+      });
+    }
+    res.json({ ...info, horas });
+  } catch (error) {
+    console.error('Error in /precios:', error);
+    res.status(500).json({ error: 'Error interno' });
   }
-  res.json({ ...info, horas });
 });
 
 /**
@@ -64,15 +70,15 @@ router.get('/disponibilidad/:fecha', async (req, res) => {
       return res.status(400).json({ error: 'Formato de fecha inválido. Use YYYY-MM-DD' });
     }
 
-    // Check date is within allowed range (today to +14 days), en hora de Lima
     const today = todayStr();
-    const maxDate = maxDateStr(14);
+    const config = await getConfig();
+    const maxDate = maxDateStr(config.diasMax);
 
     if (fecha < today) {
       return res.status(400).json({ error: 'No se pueden ver fechas pasadas' });
     }
     if (fecha > maxDate) {
-      return res.status(400).json({ error: 'Solo se pueden ver hasta 14 días en adelante' });
+      return res.status(400).json({ error: `Solo se pueden ver hasta ${config.diasMax} días en adelante` });
     }
 
     // No hay proceso cron persistente en serverless: expiramos al vuelo.
@@ -88,7 +94,7 @@ router.get('/disponibilidad/:fecha', async (req, res) => {
     if (error) throw error;
 
     // Build availability grid
-    const info = getInfoPrecios();
+    const info = config;
     const disponibilidad = [];
     const isToday = fecha === today;
     const nowHour = currentHour();
@@ -113,7 +119,7 @@ router.get('/disponibilidad/:fecha', async (req, res) => {
         hora: h,
         horaStr: `${h.toString().padStart(2, '0')}:00`,
         horaFinStr: `${(h + 1).toString().padStart(2, '0')}:00`,
-        precio: precioHora(h),
+        precio: precioHora(h, info),
         estado,
         tipo: h >= info.horaCambio ? 'noche' : 'dia'
       });
@@ -146,9 +152,11 @@ router.post('/reservas', upload.single('comprobante'), async (req, res) => {
     const horaInicio = parseInt(hora_inicio);
     const horaFin = parseInt(hora_fin);
 
+    const config = await getConfig();
+
     // Validate hours
-    if (horaInicio < 8 || horaFin > 23 || horaInicio >= horaFin) {
-      return res.status(400).json({ error: 'Horario inválido' });
+    if (horaInicio < config.horaApertura || horaFin > config.horaCierre || horaInicio >= horaFin) {
+      return res.status(400).json({ error: `Horario inválido. Atención de ${config.horaApertura}:00 a ${config.horaCierre}:00` });
     }
 
     // Validate payment method
@@ -158,10 +166,10 @@ router.post('/reservas', upload.single('comprobante'), async (req, res) => {
 
     // Check date range, en hora de Lima
     const today = todayStr();
-    const maxDate = maxDateStr(14);
+    const maxDate = maxDateStr(config.diasMax);
 
     if (fecha < today || fecha > maxDate) {
-      return res.status(400).json({ error: 'Fecha fuera del rango permitido' });
+      return res.status(400).json({ error: `Fecha fuera del rango permitido (Máximo ${config.diasMax} días)` });
     }
 
     await expireOldReservations();
@@ -182,7 +190,7 @@ router.post('/reservas', upload.single('comprobante'), async (req, res) => {
     }
 
     // Calculate total price
-    const montoTotal = calcularPrecioTotal(horaInicio, horaFin);
+    const montoTotal = calcularPrecioTotal(horaInicio, horaFin, config);
 
     // Upload receipt image to Supabase Storage
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
@@ -285,7 +293,13 @@ router.get('/admin/reservas', authenticateToken, async (req, res) => {
     let query = supabase.from('voley_reservas').select('*');
 
     if (fecha) query = query.eq('fecha', fecha);
-    if (estado) query = query.eq('estado', estado);
+    if (estado) {
+      if (estado.includes(',')) {
+        query = query.in('estado', estado.split(','));
+      } else {
+        query = query.eq('estado', estado);
+      }
+    }
 
     const from = parseInt(offset);
     const to = from + parseInt(limit) - 1;
@@ -320,7 +334,13 @@ router.get('/admin/reservas/count', authenticateToken, async (req, res) => {
 
     let query = supabase.from('voley_reservas').select('id', { count: 'exact', head: true });
     if (fecha) query = query.eq('fecha', fecha);
-    if (estado) query = query.eq('estado', estado);
+    if (estado) {
+      if (estado.includes(',')) {
+        query = query.in('estado', estado.split(','));
+      } else {
+        query = query.eq('estado', estado);
+      }
+    }
 
     const { count, error } = await query;
     if (error) throw error;
@@ -512,9 +532,13 @@ router.get('/admin/ingresos', authenticateToken, async (req, res) => {
     const monthStart = `${y}-${m}-01`;
 
     const [sy, sm, sd] = today.split('-').map(Number);
-    const sevenDaysAgoDate = new Date(Date.UTC(sy, sm - 1, sd));
-    sevenDaysAgoDate.setUTCDate(sevenDaysAgoDate.getUTCDate() - 7);
-    const sevenDaysAgoStr = sevenDaysAgoDate.toISOString().slice(0, 10);
+    const todayDate = new Date(Date.UTC(sy, sm - 1, sd));
+    const dayOfWeek = todayDate.getUTCDay();
+    const diffToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    
+    const weekStartDate = new Date(todayDate);
+    weekStartDate.setUTCDate(todayDate.getUTCDate() - diffToMonday);
+    const weekStartStr = weekStartDate.toISOString().slice(0, 10);
 
     const [
       { data: diarioRows, error: e1 },
@@ -525,11 +549,11 @@ router.get('/admin/ingresos', authenticateToken, async (req, res) => {
       { data: desgloseRaw, error: e6 }
     ] = await Promise.all([
       supabase.from('voley_reservas').select('monto_total').eq('fecha', today).eq('estado', 'confirmada'),
-      supabase.from('voley_reservas').select('monto_total').gte('fecha', sevenDaysAgoStr).eq('estado', 'confirmada'),
-      supabase.from('voley_reservas').select('monto_total').gte('fecha', monthStart).eq('estado', 'confirmada'),
+      supabase.from('voley_reservas').select('monto_total').gte('fecha', weekStartStr).eq('estado', 'confirmada'),
+      supabase.from('voley_reservas').select('monto_total, metodo_pago').gte('fecha', monthStart).eq('estado', 'confirmada'),
       supabase.from('voley_reservas').select('id', { count: 'exact', head: true }).eq('estado', 'pendiente'),
       supabase.from('voley_reservas').select('id', { count: 'exact', head: true }).eq('fecha', today).eq('estado', 'confirmada'),
-      supabase.from('voley_reservas').select('fecha, monto_total').gte('fecha', sevenDaysAgoStr).eq('estado', 'confirmada').order('fecha', { ascending: true })
+      supabase.from('voley_reservas').select('fecha, monto_total').gte('fecha', weekStartStr).eq('estado', 'confirmada').order('fecha', { ascending: true })
     ]);
 
     const firstError = e1 || e2 || e3 || e4 || e5 || e6;
@@ -544,10 +568,21 @@ router.get('/admin/ingresos', authenticateToken, async (req, res) => {
       desgloseMap[r.fecha].cantidad += 1;
     }
 
+    const desgloseMetodos = { yape: 0, plin: 0, transferencia: 0 };
+    for (const r of mensualRows) {
+      const metodo = r.metodo_pago || 'otros';
+      if (desgloseMetodos[metodo] !== undefined) {
+        desgloseMetodos[metodo] += Number(r.monto_total);
+      } else {
+        desgloseMetodos['otros'] = (desgloseMetodos['otros'] || 0) + Number(r.monto_total);
+      }
+    }
+
     res.json({
       diario: { total: sum(diarioRows), cantidad: diarioRows.length },
       semanal: { total: sum(semanalRows), cantidad: semanalRows.length },
       mensual: { total: sum(mensualRows), cantidad: mensualRows.length },
+      mensual_metodos: desgloseMetodos,
       desglose_diario: Object.values(desgloseMap),
       pendientes: pendientes || 0,
       reservas_hoy: reservasHoy || 0
@@ -578,7 +613,7 @@ router.get('/admin/ingresos/rango', authenticateToken, async (req, res) => {
 
     const { data: rows, error } = await supabase
       .from('voley_reservas')
-      .select('fecha, monto_total')
+      .select('fecha, monto_total, metodo_pago')
       .gte('fecha', desde)
       .lte('fecha', hasta)
       .eq('estado', 'confirmada')
@@ -587,10 +622,19 @@ router.get('/admin/ingresos/rango', authenticateToken, async (req, res) => {
     if (error) throw error;
 
     const desgloseMap = {};
+    const desgloseMetodos = { yape: 0, plin: 0, transferencia: 0, otros: 0 };
+    
     for (const r of rows) {
       if (!desgloseMap[r.fecha]) desgloseMap[r.fecha] = { fecha: r.fecha, total: 0, cantidad: 0 };
       desgloseMap[r.fecha].total += Number(r.monto_total);
       desgloseMap[r.fecha].cantidad += 1;
+      
+      const metodo = r.metodo_pago || 'otros';
+      if (desgloseMetodos[metodo] !== undefined) {
+        desgloseMetodos[metodo] += Number(r.monto_total);
+      } else {
+        desgloseMetodos['otros'] += Number(r.monto_total);
+      }
     }
 
     res.json({
@@ -598,11 +642,84 @@ router.get('/admin/ingresos/rango', authenticateToken, async (req, res) => {
       hasta,
       total: rows.reduce((acc, r) => acc + Number(r.monto_total), 0),
       cantidad: rows.length,
-      desglose: Object.values(desgloseMap)
+      desglose: Object.values(desgloseMap),
+      metodos: desgloseMetodos
     });
   } catch (error) {
     console.error('Error obteniendo ingresos por rango:', error);
     res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+/**
+ * GET /api/admin/reservas/exportar
+ * Export reservations to CSV
+ */
+router.get('/admin/reservas/exportar', authenticateToken, async (req, res) => {
+  try {
+    const { desde, hasta } = req.query;
+    if (!desde || !hasta) return res.status(400).json({ error: 'Faltan fechas' });
+
+    const { data, error } = await supabase
+      .from('voley_reservas')
+      .select('id, fecha, hora_inicio, hora_fin, nombre_cliente, telefono, metodo_pago, monto_total, estado, created_at')
+      .gte('fecha', desde)
+      .lte('fecha', hasta)
+      .order('fecha', { ascending: true })
+      .order('hora_inicio', { ascending: true });
+
+    if (error) throw error;
+
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Reservas');
+
+    sheet.columns = [
+      { header: 'ID', key: 'id', width: 10 },
+      { header: 'Fecha', key: 'fecha', width: 15 },
+      { header: 'Inicio', key: 'hora_inicio', width: 12 },
+      { header: 'Fin', key: 'hora_fin', width: 12 },
+      { header: 'Cliente', key: 'cliente', width: 25 },
+      { header: 'Celular', key: 'telefono', width: 15 },
+      { header: 'Método Pago', key: 'metodo_pago', width: 15 },
+      { header: 'Monto (S/)', key: 'monto_total', width: 15 },
+      { header: 'Estado', key: 'estado', width: 15 },
+      { header: 'Registrado El', key: 'created_at', width: 25 }
+    ];
+
+    sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF3B82F6' } };
+    sheet.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
+
+    for (const r of data) {
+      const row = sheet.addRow({
+        id: r.id,
+        fecha: r.fecha,
+        hora_inicio: `${r.hora_inicio}:00`,
+        hora_fin: `${r.hora_fin}:00`,
+        cliente: r.nombre_cliente,
+        telefono: r.telefono,
+        metodo_pago: (r.metodo_pago || '').toUpperCase(),
+        monto_total: Number(r.monto_total),
+        estado: (r.estado || '').toUpperCase(),
+        created_at: new Date(r.created_at).toLocaleString('es-PE')
+      });
+      
+      const estadoCell = row.getCell('estado');
+      if (r.estado === 'confirmada') estadoCell.font = { color: { argb: 'FF10B981' }, bold: true };
+      if (r.estado === 'pendiente') estadoCell.font = { color: { argb: 'FFF59E0B' }, bold: true };
+      if (r.estado === 'rechazada' || r.estado === 'cancelada') estadoCell.font = { color: { argb: 'FFEF4444' }, bold: true };
+    }
+
+    sheet.getColumn('monto_total').numFmt = '"S/"#,##0.00';
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=reservas_${desde}_al_${hasta}.xlsx`);
+
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    console.error('Error exportando reservas:', error);
+    res.status(500).json({ error: 'Error interno' });
   }
 });
 
