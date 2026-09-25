@@ -305,6 +305,29 @@ body::before {
   transition: all var(--transition-normal);
 }
 
+.metric-card.monthly {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  grid-column: 1 / -1;
+}
+
+.monthly-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  align-items: flex-end;
+}
+
+.monthly-breakdown span {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: center;
+}
+
 .metric-card:hover {
   background: var(--bg-card-hover);
   transform: translateY(-2px);
@@ -1179,6 +1202,78 @@ body::before {
     font-size: 0.75rem;
     justify-content: center;
   }
+}
+
+/* ==========================================
+   Responsive PC / Tablet Optimizations
+   ========================================== */
+@media (min-width: 768px) {
+  body {
+    background: #050510;
+  }
+  
+  .admin-app, .admin-app.active {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  
+  .admin-header {
+    width: 100%;
+    max-width: 1000px;
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+    border-left: 1px solid var(--border-glass);
+    border-right: 1px solid var(--border-glass);
+  }
+
+  .admin-main {
+    background: var(--bg-primary);
+    width: 100%;
+    max-width: 1000px;
+    min-height: calc(100vh - 100px);
+    margin-top: var(--space-md);
+    margin-bottom: var(--space-xl);
+    border-radius: var(--radius-xl);
+    border: 1px solid var(--border-glass);
+    box-shadow: 0 20px 60px rgba(59, 130, 246, 0.05);
+    padding: var(--space-xl);
+  }
+
+  .metrics-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .metric-card.monthly {
+    align-items: center;
+  }
+  
+  .monthly-breakdown {
+    flex-direction: row;
+    flex: 1;
+    justify-content: space-around;
+    margin-left: var(--space-xl);
+    align-items: center;
+  }
+  
+  .monthly-breakdown span {
+    gap: var(--space-xs);
+    font-size: 1rem;
+  }
+  
+  .tabs {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  
+  .tab-btn {
+    flex: 1;
+    margin: 0 var(--space-xs);
+  }
+}
+
+@media (min-width: 1024px) {
+  /* No additional overrides needed for monthly card, handled by 1/-1 */
 }
 
 /* ==========================================
